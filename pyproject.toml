@@ -1,0 +1,6 @@
+[tool.pyright]
+extraPaths = ["backend", "."]
+include = [".", "backend"]
+
+[tool.ruff]
+src = [".", "backend"]
