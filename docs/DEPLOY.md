@@ -23,3 +23,22 @@
 
 Free-tier gotcha: Render's free service sleeps after ~15 min idle and takes ~1 min to wake. Before a demo,
 open `/health` and wait for it to respond.
+
+## Week 3 upgrade
+Nothing manual: on the first start of the Week 3 backend, `AUTO_MIGRATE` detects the Week 2 tables, stamps them
+as migration `0001` and applies `0002` (new profile columns, chat threads/messages, job alerts). Check the Render
+log for `database schema is up to date`. Before deploying, back up the Neon database (Neon → Branches →
+create a branch from main) so a bad migration can be rolled back by switching branches.
+
+## Week 4 setup
+1. **Migration** `0003` runs automatically on startup (new tables: resumes, applications, interview_sessions,
+   alert_runs). Back up Neon first (create a branch).
+2. **Email (optional; without it alerts stay in-app under History).** Brevo free plan → SMTP & API → SMTP key.
+   In Render set `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_USER=<Brevo login>`,
+   `SMTP_PASSWORD=<SMTP key>`, `EMAIL_FROM=<a sender you verified in Brevo>`. Gmail alternative:
+   `smtp.gmail.com:587` with an App Password (needs 2-step verification).
+3. **Links in emails:** `PUBLIC_APP_URL=https://<project>.vercel.app`, `PUBLIC_API_URL=https://<service>.onrender.com`.
+4. **Scheduler:** Render generates `CRON_TOKEN`; copy it. GitHub → Settings → Secrets → Actions: add
+   `CRON_TOKEN` (same value) and `API_URL=https://<service>.onrender.com`. Test with Actions → "Job alerts
+   dispatch" → Run workflow; the log should print `{"alerts": …}`.
+5. Locally, `docker compose up` also starts a Celery worker+beat (`worker` service) that does the same hourly.

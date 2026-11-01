@@ -35,6 +35,10 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Lint
         run: ruff check .
+      - name: Migrations (Postgres, run twice to prove they're idempotent)
+        run: python -m app.migrate && python -m app.migrate
+        env:
+          DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test
       - name: Tests (SQLite)
         run: pytest -q
       - name: Tests (Postgres)

@@ -16,6 +16,8 @@ SOURCE_LATENCY = Histogram("job_source_duration_seconds", "Job source latency", 
 SEARCHES = Counter("job_searches_total", "Searches served", ["channel", "cache"])
 SEARCH_RESULTS = Histogram("job_search_results", "Results per search", buckets=(0, 1, 5, 10, 20, 50, 100))
 LLM_CALLS = Counter("llm_calls_total", "LLM calls", ["purpose", "outcome"])
+AGENT_INTENTS = Counter("agent_intents_total", "Chat messages by routed intent", ["intent", "router"])
+ALERT_RUNS = Counter("job_alert_runs_total", "Job alert runs", ["outcome"])
 
 
 class JsonFormatter(logging.Formatter):

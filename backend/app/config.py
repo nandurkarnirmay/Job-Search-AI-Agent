@@ -20,6 +20,21 @@ class Settings(BaseSettings):
     adzuna_app_key: str = ""
     rapidapi_key: str = ""
 
+    wikipedia_enabled: bool = True
+    auto_migrate: bool = True  # run Alembic migrations on startup (single-instance deploys)
+    company_cache_ttl_seconds: int = 21600  # 6 h: opening counts go stale
+    max_alerts_per_user: int = 5
+
+    # Week 4: alert emails (any SMTP provider: Brevo, Gmail app password, ...). Empty host = in-app only.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = ""
+    public_app_url: str = "http://localhost:3000"   # links in emails
+    public_api_url: str = "http://localhost:8000"   # unsubscribe link
+    cron_token: str = ""  # shared secret for POST /internal/alerts/dispatch; empty disables the endpoint
+
     sentry_dsn: str = ""
     admin_emails: str = ""  # comma-separated; can view /stats
     rate_limit_per_minute: int = 30

@@ -1,4 +1,30 @@
-import type { Job } from "@/lib/api";
+"use client";
+import { useState } from "react";
+import { ApiError, saveJob, type Job } from "@/lib/api";
+
+function SaveButton({ jobId }: { jobId: string }) {
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  async function save() {
+    setState("saving");
+    try {
+      await saveJob(jobId);
+      setState("saved");
+    } catch (e) {
+      // already tracked counts as saved
+      if (e instanceof ApiError && e.code === "already_tracked") return setState("saved");
+      setMsg(e instanceof ApiError ? e.message : "Couldn't save");
+      setState("error");
+    }
+  }
+  if (state === "saved") return <span className="shrink-0 rounded border border-green-300 px-3 py-1 text-sm text-green-700">Saved ✓</span>;
+  return (
+    <button onClick={save} disabled={state === "saving"} title={msg || "Add to your application tracker"}
+      className="shrink-0 rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50">
+      {state === "error" ? "Retry save" : "Save"}
+    </button>
+  );
+}
 
 function salary(j: Job): string {
   const lo = j.salary_min_lpa ?? j.salary_max_lpa;
@@ -15,7 +41,7 @@ function experience(j: Job): string | null {
     : `${j.experience_min_years}+ yrs`;
 }
 
-export default function JobCard({ job }: { job: Job }) {
+export default function JobCard({ job, canSave = true }: { job: Job; canSave?: boolean }) {
   const tags = [
     salary(job),
     experience(job),
@@ -30,8 +56,13 @@ export default function JobCard({ job }: { job: Job }) {
           <h3 className="font-semibold">{job.title}</h3>
           <p className="text-sm text-slate-600">{job.company} · {job.location}</p>
         </div>
-        <a href={job.url} target="_blank" rel="noopener noreferrer"
-          className="shrink-0 rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700">Apply</a>
+        <div className="flex shrink-0 gap-2">
+          {canSave && <SaveButton jobId={job.id} />}
+          {/^https?:\/\//.test(job.url) && (
+            <a href={job.url} target="_blank" rel="noopener noreferrer"
+              className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700">Apply</a>
+          )}
+        </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
         {tags.map((t) => <span key={t} className="rounded bg-slate-100 px-2 py-0.5 text-xs">{t}</span>)}

@@ -8,7 +8,8 @@ const num = (s: string) => (s === "" ? null : Number(s));
 
 function ProfileForm() {
   const [form, setForm] = useState({ full_name: "", current_city: "", preferred_cities: "", experience_years: "",
-    skills: "", expected_lpa: "", notice_period_days: "", work_mode: "any" });
+    skills: "", expected_lpa: "", notice_period_days: "", work_mode: "any", career_goal: "", target_roles: "",
+    open_to_relocation: "" });
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -17,6 +18,8 @@ function ProfileForm() {
       preferred_cities: p.preferred_cities.join(", "), experience_years: p.experience_years?.toString() ?? "",
       skills: p.skills.join(", "), expected_lpa: p.expected_lpa?.toString() ?? "",
       notice_period_days: p.notice_period_days?.toString() ?? "", work_mode: p.work_mode ?? "any",
+      career_goal: p.career_goal ?? "", target_roles: p.target_roles.join(", "),
+      open_to_relocation: p.open_to_relocation == null ? "" : p.open_to_relocation ? "yes" : "no",
     })).catch((e) => setStatus({ ok: false, text: e instanceof ApiError ? e.message : "Couldn't load profile" }));
   }, []);
 
@@ -33,9 +36,11 @@ function ProfileForm() {
           preferred_cities: list(form.preferred_cities), experience_years: num(form.experience_years),
           skills: list(form.skills), expected_lpa: num(form.expected_lpa),
           notice_period_days: num(form.notice_period_days), work_mode: form.work_mode,
+          career_goal: form.career_goal.trim() || null, target_roles: list(form.target_roles),
+          open_to_relocation: form.open_to_relocation === "" ? null : form.open_to_relocation === "yes",
         }),
       });
-      setStatus({ ok: true, text: "Saved. The agent will use these as defaults." });
+      setStatus({ ok: true, text: "Saved. The agent uses these as defaults; \"show me jobs\" searches your main target role." });
     } catch (err) {
       setStatus({ ok: false, text: err instanceof ApiError ? err.message : "Save failed" });
     }
@@ -52,6 +57,19 @@ function ProfileForm() {
       </label>
       <label className="text-sm">Experience (years)
         <input type="number" min={0} max={50} step={0.5} value={form.experience_years} onChange={set("experience_years")} className={input} />
+      </label>
+      <label className="text-sm sm:col-span-2">Target roles (comma-separated, first one is your main goal)
+        <input value={form.target_roles} onChange={set("target_roles")} placeholder="Backend Developer, Data Engineer"
+          className={input} />
+      </label>
+      <label className="text-sm sm:col-span-2">Career goal (max 500 characters)
+        <textarea value={form.career_goal} onChange={set("career_goal")} maxLength={500} rows={2}
+          placeholder="e.g. Backend engineer at a product company within 2 years" className={input} />
+      </label>
+      <label className="text-sm">Open to relocation
+        <select value={form.open_to_relocation} onChange={set("open_to_relocation")} className={input}>
+          <option value="">Not specified</option><option value="yes">Yes</option><option value="no">No</option>
+        </select>
       </label>
       <label className="text-sm sm:col-span-2">Skills (comma-separated)
         <input value={form.skills} onChange={set("skills")} placeholder="python, sql, react" className={input} />

@@ -27,6 +27,11 @@ def update_profile(body: ProfileIn, user: User = Depends(get_current_user), db: 
     data = body.model_dump()
     data["preferred_cities"] = [c.strip() for c in data["preferred_cities"] if c.strip()]
     data["skills"] = sorted({s.strip().lower() for s in data["skills"] if s.strip()})
+    roles: dict[str, str] = {}
+    for r in data["target_roles"]:
+        if r.strip():
+            roles.setdefault(r.strip().lower(), r.strip())  # case-insensitive dedupe, keep first spelling
+    data["target_roles"] = list(roles.values())
     for key, value in data.items():
         setattr(profile, key, value)
     db.commit()
@@ -38,6 +43,8 @@ def profile_defaults(profile: Profile | None) -> dict:
     if profile is None:
         return {}
     d = {}
+    if profile.target_roles:
+        d["keywords"] = profile.target_roles[0]  # "show me jobs" searches the user's main target role
     city = (profile.preferred_cities or [None])[0] or profile.current_city
     if city:
         d["city"] = city
