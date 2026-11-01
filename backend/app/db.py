@@ -28,8 +28,8 @@ def get_db():
         db.close()
 
 
-def init_db() -> None:
-    # Week 2: create tables on startup. Week 5 (full schema): switch to Alembic migrations.
+def create_all() -> None:
+    """Create tables straight from the models. Tests only: real databases use Alembic (app/migrate.py)."""
     from app import models  # noqa: F401  (registers tables)
 
     Base.metadata.create_all(bind=engine)

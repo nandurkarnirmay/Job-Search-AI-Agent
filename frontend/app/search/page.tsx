@@ -1,17 +1,12 @@
 "use client";
 import { FormEvent, useState } from "react";
+import Chat from "@/components/Chat";
 import JobCard from "@/components/JobCard";
 import RequireAuth from "@/components/RequireAuth";
-import { api, ApiError, ChatResponse, Job, SearchResponse } from "@/lib/api";
+import { api, ApiError, createAlert, Job, SearchResponse } from "@/lib/api";
 
 const CITIES = ["", "Bengaluru", "Mumbai", "Delhi", "Gurugram", "Noida", "Hyderabad", "Chennai", "Pune", "Kolkata",
   "Ahmedabad", "Jaipur", "Kochi", "Bhubaneswar"];
-const EXAMPLES = [
-  "Remote Python developer jobs in Bengaluru above 8 LPA",
-  "Fresher data analyst openings in Pune",
-  "React developer, 3 years experience, hybrid, Gurugram, 60 days notice",
-];
-
 type Mode = "chat" | "filters";
 
 function Results({ jobs, meta }: { jobs: Job[]; meta?: string }) {
@@ -24,61 +19,20 @@ function Results({ jobs, meta }: { jobs: Job[]; meta?: string }) {
   );
 }
 
-function ChatSearch() {
-  const [message, setMessage] = useState("");
-  const [result, setResult] = useState<ChatResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function send(text: string) {
-    if (text.trim().length < 2) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setResult(await api<ChatResponse>("/chat", { method: "POST", body: JSON.stringify({ message: text }) }));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Something went wrong");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div>
-      <form onSubmit={(e: FormEvent) => { e.preventDefault(); send(message); }} className="flex gap-2">
-        <input value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500}
-          placeholder="Describe the job you want…" className="flex-1 rounded border border-slate-300 px-3 py-2" />
-        <button disabled={busy} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50">
-          {busy ? "Searching…" : "Ask"}
-        </button>
-      </form>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {EXAMPLES.map((ex) => (
-          <button key={ex} onClick={() => { setMessage(ex); send(ex); }}
-            className="rounded-full border border-slate-300 px-3 py-1 text-xs hover:bg-white">{ex}</button>
-        ))}
-      </div>
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-      {result && (
-        <div className="mt-6 whitespace-pre-line rounded-lg bg-blue-50 p-4 text-sm">{result.reply}</div>
-      )}
-      {result && <Results jobs={result.jobs} meta={`Understood by: ${result.parser === "llm" ? "Gemini" : "rule parser"}`} />}
-    </div>
-  );
-}
-
 function FilterSearch() {
   const [f, setF] = useState({ q: "", city: "", max_experience_years: "", min_salary_lpa: "", work_mode: "",
     notice_period_days: "" });
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setAlertMsg(null);
     const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== ""));
     try {
       setResult(await api<SearchResponse>(`/jobs/search?${qs}`));
@@ -86,6 +40,16 @@ function FilterSearch() {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveAlert() {
+    if (!result) return;
+    try {
+      await createAlert(result.params);
+      setAlertMsg("Daily alert created. Manage it under Alerts.");
+    } catch (err) {
+      setAlertMsg(err instanceof ApiError ? err.message : "Couldn't create alert");
     }
   }
 
@@ -129,6 +93,14 @@ function FilterSearch() {
       </form>
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
       {result && result.count === 0 && <p className="mt-6 text-slate-600">No jobs match. Loosen a filter.</p>}
+      {result && result.count > 0 && (
+        <div className="mt-4 flex items-center gap-3">
+          <button onClick={saveAlert} className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-white">
+            🔔 Save as alert
+          </button>
+          {alertMsg && <span className="text-sm text-slate-600">{alertMsg}</span>}
+        </div>
+      )}
       {result && (
         <Results jobs={result.jobs} meta={`${result.count} jobs · ${result.latency_ms} ms${result.cache_hit ? " (cached)" : ""}` +
           (result.sources_failed.length ? ` · unavailable: ${result.sources_failed.join(", ")}` : "")} />
@@ -146,7 +118,7 @@ export default function SearchPage() {
         <button className={tab("chat")} onClick={() => setMode("chat")}>Ask the agent</button>
         <button className={tab("filters")} onClick={() => setMode("filters")}>Filters</button>
       </div>
-      {mode === "chat" ? <ChatSearch /> : <FilterSearch />}
+      {mode === "chat" ? <Chat /> : <FilterSearch />}
     </RequireAuth>
   );
 }

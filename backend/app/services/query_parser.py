@@ -19,13 +19,18 @@ _FILLER = re.compile(
     r"positions?|vacanc(?:y|ies)|in|at|near|with|and|please|job|opportunit(?:y|ies)|of|on|based|"
     r"above|over|more|than|minimum|min|atleast|at|least|salary|package|ctc|lpa|lakhs?|lacs?|per|annum|"
     r"years?|yrs?|experience|exp|remote|hybrid|onsite|on-site|wfh|work|from|home|office|fresher|freshers|"
-    r"entry|level|immediate|joiner|notice|period|days?|my|is|have|has|who|which|that|to|can|join)\b",
+    r"entry|level|immediate|joiner|notice|period|days?|my|is|have|has|who|which|that|to|can|join|"
+    # Week 3: words from salary questions and follow-ups ("what about Pune?", "only remote", "show more")
+    r"average|typical|median|range|earn|earns|earning|paid|pay|how|much|what|does|do|compensation|tell|"
+    r"about|only|just|instead|also|now|then|same|but|those|these|it|there|ok|okay|thanks|like|next|page|"
+    r"results?|load|salaries|are|was|were|be|should|could|would|expect|offered|offer|india|filters?|anywhere|"
+    r"everywhere)\b",
     re.I,
 )
 
 
 def parse_query(text: str) -> SearchParams:
-    t = text.lower()
+    t = re.sub(r"['’]s\b", "", text.lower())  # "what's" -> "what", "infosys's" -> "infosys"
     params: dict = {}
 
     for alias in sorted(CITIES, key=len, reverse=True):
@@ -58,5 +63,5 @@ def parse_query(text: str) -> SearchParams:
     keywords = _FILLER.sub(" ", t)
     keywords = re.sub(r"[^a-z0-9+#./ ]", " ", keywords)
     keywords = re.sub(r"\b\d+(\.\d+)?\b", " ", keywords)
-    params["keywords"] = " ".join(keywords.split())
+    params["keywords"] = " ".join(w for w in keywords.split() if any(ch.isalnum() for ch in w))
     return SearchParams(**params)

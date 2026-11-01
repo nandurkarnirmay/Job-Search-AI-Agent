@@ -14,6 +14,13 @@ from app.services.filters import apply_filters
 from app.sources.aggregator import Aggregator, get_aggregator
 
 log = logging.getLogger("app.search")
+JOB_TTL_SECONDS = 86400
+
+
+def get_job(job_id: str) -> JobListing | None:
+    """A job seen in a search within the last day, with its full description; None if expired/unknown."""
+    cached = get_cache().get(f"job:{job_id}")
+    return JobListing(**json.loads(cached)) if cached else None
 
 
 def run_search(params: SearchParams, aggregator: Aggregator | None = None) -> SearchOutcome:
@@ -38,6 +45,8 @@ def run_search(params: SearchParams, aggregator: Aggregator | None = None) -> Se
             raise AllSourcesFailedError(f"Job search is temporarily unavailable ({reason}). Try again in a minute.")
         cache.set(raw_key, json.dumps({"jobs": [j.model_dump() for j in jobs], "ok": ok}),
                   get_settings().search_cache_ttl_seconds)
+        # remember each job by id for a day: resume matching / tracking / interview prep look it up later
+        cache.set_many({f"job:{j.id}": j.model_dump_json() for j in jobs}, JOB_TTL_SECONDS)
 
     filtered = apply_filters(jobs, params)
     return SearchOutcome(params=params, jobs=filtered, total_before_filters=len(jobs), sources_ok=ok,

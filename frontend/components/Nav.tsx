@@ -11,10 +11,14 @@ export default function Nav() {
     <header className="border-b border-slate-200 bg-white">
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link href="/" className="font-semibold">Job Search AI Agent</Link>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm">
           {loggedIn && (
             <>
               <Link href="/search" className="hover:text-blue-700">Search</Link>
+              <Link href="/resume" className="hover:text-blue-700">Resume</Link>
+              <Link href="/interview" className="hover:text-blue-700">Interview</Link>
+              <Link href="/applications" className="hover:text-blue-700">Tracker</Link>
+              <Link href="/alerts" className="hover:text-blue-700">Alerts</Link>
               <Link href="/profile" className="hover:text-blue-700">Profile</Link>
               <button
                 onClick={() => { setToken(null); router.push("/login"); }}

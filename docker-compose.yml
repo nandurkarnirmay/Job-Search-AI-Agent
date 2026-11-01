@@ -28,5 +28,16 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
 
+  worker:  # Celery worker + beat: runs due job alerts hourly and emails them
+    build: ./backend
+    command: celery -A app.worker worker --beat --loglevel=info
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://jobagent:jobagent@postgres:5432/jobagent
+      REDIS_URL: redis://redis:6379/0
+      AUTO_MIGRATE: "false"
+    depends_on:
+      backend: { condition: service_started }
+
 volumes:
   pgdata:

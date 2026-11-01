@@ -7,7 +7,6 @@ from app.sources.adzuna import AdzunaSource
 from app.sources.base import JobSource, SourceError
 from app.sources.jsearch import JSearchSource
 from app.sources.normalize import dedupe_key
-from app.sources.scraper import IndianScraperSource
 
 
 class Aggregator:
@@ -38,4 +37,4 @@ class Aggregator:
 
 @lru_cache
 def get_aggregator() -> Aggregator:
-    return Aggregator([AdzunaSource(), JSearchSource(), IndianScraperSource()])
+    return Aggregator([AdzunaSource(), JSearchSource()])
