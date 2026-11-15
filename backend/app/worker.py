@@ -6,6 +6,8 @@ from celery import Celery
 from app.config import get_settings
 from app.db import SessionLocal
 from app.services.alert_dispatch import dispatch_due_alerts
+from app.services.reminders import dispatch_reminders
+from app.services.retention import purge_old_data
 
 broker = get_settings().redis_url or "redis://localhost:6379/0"
 celery_app = Celery("jobagent", broker=broker)
@@ -20,4 +22,4 @@ celery_app.conf.update(
 @celery_app.task(name="alerts.dispatch")
 def dispatch_alerts() -> dict:
     with SessionLocal() as db:
-        return dispatch_due_alerts(db)
+        return {**dispatch_due_alerts(db), **dispatch_reminders(db), **purge_old_data(db)}

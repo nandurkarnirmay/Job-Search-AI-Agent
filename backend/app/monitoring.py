@@ -1,4 +1,5 @@
 """Prometheus metrics, request IDs, structured logs and optional Sentry."""
+import hmac
 import json
 import logging
 import time
@@ -72,5 +73,8 @@ def install(app: FastAPI) -> None:
                                           "duration_ms": round(elapsed * 1000)})
 
     @app.get("/metrics", include_in_schema=False)
-    def metrics() -> Response:
+    def metrics(request: Request) -> Response:
+        token = get_settings().metrics_token
+        if token and not hmac.compare_digest(request.headers.get("x-metrics-token", ""), token):
+            return Response(status_code=404)  # don't advertise the endpoint to scanners
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

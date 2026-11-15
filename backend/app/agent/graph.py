@@ -1,4 +1,4 @@
-"""Career agent as a LangGraph workflow (Week 4: 6 tools).
+"""Career agent as a LangGraph workflow (Week 5: 9 tools).
 
                     ┌─ job_search ──────► parse_query ──► search ──► respond_jobs ─┐
                     ├─ refine_search ──────────────────► search                    │
@@ -7,6 +7,9 @@
                     ├─ resume_review / resume_match ──► resume ────────────────────┤
                     ├─ interview_prep ────► interview ─────────────────────────────┤
                     ├─ track_application / applications_status ──► tracker ────────┤
+                    ├─ salary_negotiation ──► negotiation ─────────────────────────┤
+                    ├─ career_path ───────► career ────────────────────────────────┤
+                    ├─ github_review ─────► github ────────────────────────────────┤
                     └─ help ──────────────► help ──────────────────────────────────┘
 
 `route` uses rules first and asks the LLM only when no rule matches. Conversation memory (previous search,
@@ -23,12 +26,15 @@ from pydantic import BaseModel, Field
 from app.agent.llm import get_llm
 from app.agent.router import Intent, Route, merge_refinement, role_and_company, route
 from app.domain import CompanyReport, JobListing, SalaryReport, SearchOutcome, SearchParams
-from app.errors import AllSourcesFailedError, ConflictError
+from app.errors import AllSourcesFailedError, AppError, ConflictError
 from app.monitoring import AGENT_INTENTS, LLM_CALLS
 from app.schemas import ApplicationOut
 from app.services.applications import add_application, pipeline
+from app.services.career import build_path, career_reply
 from app.services.company_research import company_reply, overview, research_company
+from app.services.github_profile import analyse, github_reply
 from app.services.interview import create_session, interview_out
+from app.services.negotiation import advise, negotiation_reply, parse_offer_message
 from app.services.query_parser import parse_query
 from app.services.resume_analysis import ats_match, ats_reply, review_for_role, review_reply
 from app.services.resume_parser import from_row
@@ -45,7 +51,10 @@ HELP_TEXT = ("I'm your job search assistant for India. I can:\n"
              "• Check your resume: 'review my resume for data analyst roles',\n"
              "  'how does my resume match the first job?'\n"
              "• Practise interviews: 'interview questions for a Java developer', 'prepare me for the second job'\n"
-             "• Track applications: 'save the first job', 'show my applications'")
+             "• Track applications: 'save the first job', 'show my applications'\n"
+             "• Negotiate an offer: 'I got an offer of 8 LPA for data analyst in Pune with 2 years'\n"
+             "• Plan your career: 'roadmap to become a data engineer'\n"
+             "• Review your GitHub: 'review my GitHub asha-dev'")
 
 ROUTE_PROMPT = """Classify the latest message sent to a career assistant for the Indian job market.
 Intents:
@@ -56,6 +65,9 @@ Intents:
 - resume_review: wants feedback on their resume or their skill gaps
 - interview_prep: wants interview questions or practice for a role
 - applications_status: asks about the jobs they saved or applied to
+- salary_negotiation: has a job offer and wants to evaluate or negotiate it
+- career_path: wants a career roadmap or how to grow into a role
+- github_review: wants feedback on their GitHub profile
 - help: greeting, unclear, or outside job search
 Recent conversation:
 {history}
@@ -134,6 +146,16 @@ def _llm_route(decision: RouteDecision, state: AgentState) -> Route | None:
         if decision.intent == "interview_prep" and not role:
             return None
         return Route(decision.intent, role=role, company=company)
+    if decision.intent == "salary_negotiation":
+        role = parsed.keywords or state.get("profile_defaults", {}).get("keywords")
+        if not (role and parse_offer_message(message).get("offer_lpa")):
+            return None
+        return Route("salary_negotiation", params=parsed, role=role)
+    if decision.intent == "career_path":
+        role = parsed.keywords or state.get("profile_defaults", {}).get("keywords")
+        return Route("career_path", role=role) if role else None
+    if decision.intent == "github_review":
+        return Route("github_review")
     if decision.intent == "applications_status":
         return Route("applications_status")
     if decision.intent in ("resume_match", "track_application"):
@@ -252,6 +274,8 @@ def respond_jobs_node(state: AgentState) -> AgentState:
     n = len(outcome.jobs)
     lines = [f"Found {n} opening{'s' if n != 1 else ''} for {_describe(p)}. Top matches:"]
     lines += [f"{i}. {j.title} at {j.company}, {j.location} ({_salary(j)})" for i, j in enumerate(top, 1)]
+    if outcome.stale:
+        lines.append("Note: job sources are down right now, so these are the last results I had (up to a day old).")
     if outcome.sources_failed:
         lines.append(f"Note: {', '.join(outcome.sources_failed)} didn't respond, so results may be incomplete.")
     return {"reply": "\n".join(lines)}
@@ -336,6 +360,51 @@ def tracker_node(state: AgentState) -> AgentState:
             "extras": {"pipeline": counts}}
 
 
+def negotiation_node(state: AgentState) -> AgentState:
+    offer = parse_offer_message(state["message"])
+    role = state.get("role")
+    if not offer.get("offer_lpa"):
+        return {"reply": "Tell me the offer amount and role, e.g. 'I got an offer of 8 LPA for data analyst in Pune "
+                         "with 2 years, current CTC 6 LPA'."}
+    if not role:
+        return {"reply": "Which role is the offer for? e.g. 'offer of 8 LPA for a data analyst role in Pune'."}
+    p, ctx = state.get("params"), state.get("tools")
+    user = ctx.user if ctx else None
+    a = advise(role, offer["offer_lpa"], city=p.city if p else None,
+               experience_years=p.max_experience_years if p else None, current_lpa=offer.get("current_lpa"),
+               competing_lpa=offer.get("competing_lpa"), notice_period_days=p.notice_period_days if p else None,
+               skills=list(user.resume.skills) if user and user.resume else None,
+               name=user.profile.full_name if user and user.profile else None)
+    return {"reply": negotiation_reply(a), "extras": {"negotiation": a.model_dump()}}
+
+
+def career_node(state: AgentState) -> AgentState:
+    ctx = state.get("tools")
+    skills, progress = None, {}
+    if ctx is not None:
+        skills = list(ctx.user.resume.skills) if ctx.user.resume else None
+        progress = {sp.skill: sp.status for sp in ctx.user.skill_progress}
+    path = build_path(state["role"], skills, progress)
+    return {"reply": career_reply(path), "extras": {"career": path.model_dump()}}
+
+
+def github_node(state: AgentState) -> AgentState:
+    ctx = state.get("tools")
+    username = state.get("company_name")
+    if not username and ctx and ctx.user.profile:
+        username = ctx.user.profile.github_username
+    if not username:
+        return {"reply": "What's your GitHub username? e.g. 'review my GitHub asha-dev' (or add it to your profile)."}
+    try:
+        rep = analyse(username, list(ctx.user.resume.skills) if ctx and ctx.user.resume else None)
+    except AppError as e:
+        return {"reply": e.message}
+    if ctx and ctx.user.profile and ctx.user.profile.github_username != rep.username:
+        ctx.user.profile.github_username = rep.username
+        ctx.db.commit()
+    return {"reply": github_reply(rep), "extras": {"github": rep.model_dump()}}
+
+
 def help_node(state: AgentState) -> AgentState:
     note = state.get("help_note")
     return {"reply": f"{note}\n\n{HELP_TEXT}" if note else HELP_TEXT}
@@ -345,6 +414,7 @@ def _after_route(state: AgentState) -> str:
     return {"job_search": "parse_query", "refine_search": "search", "company_research": "company",
             "salary_research": "salary", "resume_review": "resume", "resume_match": "resume",
             "interview_prep": "interview", "track_application": "tracker", "applications_status": "tracker",
+            "salary_negotiation": "negotiation", "career_path": "career", "github_review": "github",
             "help": "help"}[state["intent"]]
 
 
@@ -357,14 +427,17 @@ def build_graph():
     for name, fn in [("route", route_node), ("parse_query", parse_node), ("search", search_node),
                      ("respond_jobs", respond_jobs_node), ("company", company_node), ("salary", salary_node),
                      ("resume", resume_node), ("interview", interview_node), ("tracker", tracker_node),
+                     ("negotiation", negotiation_node), ("career", career_node), ("github", github_node),
                      ("help", help_node)]:
         g.add_node(name, fn)
     g.add_edge(START, "route")
     g.add_conditional_edges("route", _after_route, ["parse_query", "search", "company", "salary", "resume",
-                                                    "interview", "tracker", "help"])
+                                                    "interview", "tracker", "negotiation", "career", "github",
+                                                    "help"])
     g.add_conditional_edges("parse_query", _after_parse, ["search", "respond_jobs"])
     g.add_edge("search", "respond_jobs")
-    for terminal in ("respond_jobs", "company", "salary", "resume", "interview", "tracker", "help"):
+    for terminal in ("respond_jobs", "company", "salary", "resume", "interview", "tracker", "negotiation", "career",
+                     "github", "help"):
         g.add_edge(terminal, END)
     return g.compile()
 

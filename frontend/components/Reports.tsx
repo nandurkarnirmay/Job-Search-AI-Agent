@@ -1,4 +1,5 @@
 import type { CompanyReport, SalaryReport, SalaryStats } from "@/lib/api";
+import { BandsChart } from "@/components/Week5Cards";
 
 function Stats({ label, s, note }: { label: string; s: SalaryStats; note?: string }) {
   // bar shows the middle half (p25–p75) inside the full range, median marked
@@ -30,6 +31,9 @@ export function SalaryCard({ r }: { r: SalaryReport }) {
       <h3 className="font-semibold">Salary: {r.role}, {where}</h3>
       {r.listings && <Stats label="Advertised in current listings" s={r.listings} />}
       {r.market && <Stats label="Market estimate (Adzuna)" s={r.market} note="includes estimates" />}
+      {r.bands && r.bands.some((b) => b.stats) && (
+        <div><p className="mb-1 text-sm font-medium">By required experience</p><BandsChart bands={r.bands} /></div>
+      )}
       {!r.listings && !r.market && <p className="text-sm text-slate-600">Not enough data for a reliable range.</p>}
       {r.notes.map((n) => <p key={n} className="text-xs text-slate-500">{n}</p>)}
     </div>

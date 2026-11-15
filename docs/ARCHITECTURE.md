@@ -1,4 +1,4 @@
-# Architecture (Week 4)
+# Architecture (Week 7)
 
 ```
 Next.js (Vercel) ──HTTPS + JWT──► FastAPI (Render)
@@ -106,3 +106,82 @@ URLs, and carry a signed one-click unsubscribe link plus a `List-Unsubscribe` he
 
 **Job cache.** Every search result is cached by id for 24 h (one Redis pipeline round trip), so later
 "match my resume to the second job" / "save it" / "prepare me for it" can use the full description.
+
+## Weeks 5–7
+
+### Services (Week 7)
+One codebase, four deployable services selected by the `SERVICE` env var (`app/main.py`):
+
+| Service | Routers | Migrates DB |
+|---|---|---|
+| `auth` | `/auth`, `/me/profile`, `/me/export` | no |
+| `jobs` | `/jobs`, `/chat`, `/alerts`, `/applications`, `/calendar`, `/salary`, `/career`, `/github`, `/analytics`, `/stats`, `/internal` | **yes** (single owner of migrations) |
+| `resume` | `/resume` | no |
+| `interview` | `/interview` | no |
+| `all` (default) | everything: the monolith, for local dev and the free-tier fallback | yes |
+
+```
+Browser ──► Next.js (Vercel)  /api/* rewrites = API gateway (same origin, no CORS)
+              ├─ /api/auth/*, /api/me/*   ──► job-agent-auth
+              ├─ /api/resume*             ──► job-agent-resume
+              ├─ /api/interview/*         ──► job-agent-interview
+              └─ /api/*                   ──► job-agent-jobs ──► Adzuna, JSearch, Jooble, Wikipedia, GitHub, Gemini
+                                  all four ──► one Postgres (Neon) + one Redis (Upstash), shared JWT secret
+```
+Honest limits: the services share one database and are split by route ownership, not by data ownership. That
+gives independent deploys, scaling and failure isolation (a crashing resume parser doesn't take search down),
+but not independent schemas. The chat agent (in `jobs`) calls resume/interview code in-process rather than over
+HTTP, so the resume and interview services are the API surface, not the agent's dependency. A full split
+(per-service schemas, service-to-service auth) isn't justified at this scale.
+
+### Job sources: three tiers (Week 5)
+1. **Primary**: Adzuna (India) and JSearch, in parallel.
+2. **Fallback**: Jooble, called only when a primary fails or together they return fewer than
+   `FALLBACK_MIN_RESULTS` (10) jobs. That keeps Jooble's quota for when it matters.
+3. **Stale cache**: every successful search is also stored under `stale:<key>` for 24 h. If every source fails,
+   that copy is served with `stale: true` and the UI and chat say "results may be out of date".
+Remotive was evaluated and rejected: its terms forbid redistributing listings in another job board.
+
+All clients inherit `ResilientAPI`: timeout, retries with backoff on 429/5xx only, throttle, circuit breaker
+(3 failures → skipped 60 s), and a parse failure counts as a failure.
+
+**External APIs (6):** Adzuna, JSearch (RapidAPI), Jooble, Wikipedia REST, GitHub REST, Gemini.
+Calendar uses the iCalendar standard (RFC 5545) and Google Calendar "add event" links, so it needs no OAuth.
+
+### New tools (Weeks 5–6)
+```
+route ─┬─ salary_negotiation ──► negotiation ─┐
+       ├─ career_path ─────────► career ──────┤─► END   (plus the Week 3–4 tools)
+       └─ github_review ───────► github ──────┘
+```
+| Tool | Data | LLM role |
+|---|---|---|
+| Salary bands | listings grouped by experience (0–1, 1–3, 3–6, 6–10, 10+ yrs), percentiles, n ≥ 3 per band | none |
+| Negotiation | offer percentile within the matching band → counter (below p25 → median; below median → midway to p75; to p75 → +8 %; above p75 → no counter) capped at +25 % unless a competing offer is higher | none: script is a template |
+| Career path | role family ladder + required skills = core skills ∪ skills in ≥ 20 % of current postings, minus resume skills and skills marked done, ranked by demand, packed into 6-week phases; free/official resources | none |
+| GitHub review | public repos (forks and archived excluded): languages → skills, activity in last 6 months, stars, README/description checks, skills on GitHub but not on the resume and vice versa | none |
+| Mock interview v2 | spoken answers transcribed in the browser; pace (110–160 wpm), fillers/100 words, long pauses; follow-up question when an answer misses a key point / own action / result | follow-up wording only, guarded; rule fallback |
+
+### Calendar (Week 6)
+`calendar_events` (interview / follow-up / deadline, optionally linked to a tracked application). Each event
+exports as `.ics` with two reminders (1 day and 1 hour before) and has a Google Calendar link. A private feed
+URL (`/calendar/feed/<random token>.ics`, rotatable, revocable) lets Google/Outlook subscribe; it also lists
+tracker next-action dates as all-day items. Email reminders go out from the same scheduler as alerts
+(`dispatch_reminders`), marked sent only after success; rescheduling resets the reminder.
+
+### Security and data (Week 7)
+- **Encryption at rest:** chat messages, resume text, tracker notes, event notes and interview answers are
+  encrypted per field with Fernet (AES-128-CBC + HMAC-SHA256). `FIELD_ENCRYPTION_KEYS` is a comma list: the
+  first key encrypts, all keys decrypt, so keys rotate without downtime. Rows written before Week 7 are read as
+  plaintext and encrypted on their next write. Production refuses to start without a key.
+- **Headers:** CSP `default-src 'none'` on the API, nosniff, `X-Frame-Options: DENY`, no-referrer, HSTS in
+  production; the frontend allows the microphone for itself only.
+- **`/metrics`** requires `X-Metrics-Token` when `METRICS_TOKEN` is set.
+- **Retention:** conversations idle > 180 days, search logs > 90 days and alert runs > 60 days are purged by the
+  scheduler.
+- **Data export:** `GET /me/export` returns everything stored about the user as JSON.
+See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md).
+
+### Performance (Week 7)
+GZip on responses > 1 KB; cached search hits skip all sources; `/analytics/system` reports p50/p95 search
+latency, cache hit rate and source failure rates from `search_logs`. Measurements: [BENCHMARKS.md](BENCHMARKS.md).

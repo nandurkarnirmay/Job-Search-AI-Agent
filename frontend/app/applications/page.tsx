@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
+import CalendarPanel from "@/components/CalendarPanel";
 import RequireAuth from "@/components/RequireAuth";
 import { api, ApiError, Application, APP_STATUSES, AppStatus } from "@/lib/api";
 
@@ -81,6 +82,7 @@ function Tracker() {
           <div className="mt-2 grid gap-2 md:grid-cols-3">{closed.map((a) => <Card key={a.id} a={a} onChange={load} />)}</div>
         </details>
       )}
+      <CalendarPanel apps={apps.filter((a) => ACTIVE.includes(a.status))} />
       <form onSubmit={add} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <span className="w-full font-medium">Add a job you found elsewhere (LinkedIn, Naukri, referral…)</span>
         <input required minLength={2} placeholder="Job title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}

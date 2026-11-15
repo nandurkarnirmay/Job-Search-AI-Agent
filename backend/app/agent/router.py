@@ -10,6 +10,9 @@ Intents:
   interview_prep   "interview questions for a python developer", "prepare me for the first job"
   track_application "save the second job"
   applications_status "show my applications"
+  salary_negotiation "I got an offer of 8 LPA for data analyst in Pune, should I negotiate?"   (Week 5)
+  career_path      "how do I become a data scientist?", "roadmap for a DevOps engineer"     (Week 5)
+  github_review    "review my GitHub", "analyse github.com/asha-dev"                         (Week 5)
   help             greetings, empty or unclear messages
 
 Follow-ups can also remove filters: "any city", "remove the salary filter", "clear filters".
@@ -24,7 +27,8 @@ from app.domain import SearchParams
 from app.services.query_parser import parse_query
 
 Intent = Literal["job_search", "refine_search", "company_research", "salary_research", "resume_review",
-                 "resume_match", "interview_prep", "track_application", "applications_status", "help"]
+                 "resume_match", "interview_prep", "track_application", "applications_status", "salary_negotiation",
+                 "career_path", "github_review", "help"]
 
 JOB_WORDS = re.compile(r"\b(jobs?|openings?|vacanc(?:y|ies)|roles?|positions?|hiring|opportunit(?:y|ies)|"
                        r"internships?|apply|listings?)\b", re.I)
@@ -43,6 +47,23 @@ TRACK_THIS = re.compile(r"^\s*(?:please\s+)?(?:save|track|bookmark|shortlist)\s+
 APPS = re.compile(r"\b(my applications?|application status|applications? tracker|my tracker|my pipeline|"
                   r"track(?:ing)? my applications|show (?:my )?(?:saved|tracked|applied) jobs|"
                   r"how many (?:jobs )?(?:have i|did i) appl\w*)\b", re.I)
+
+NEGOTIATE = re.compile(r"\b(negotiat\w*|counter[- ]?offer|offer letter|got an? (?:job )?offer|offered me|"
+                       r"(?:an?|the|my) offer (?:of|for|at)|\d+(?:\.\d+)?\s*(?:lpa|l|lakhs?)\b.{0,25}\boffer|"
+                       r"accept (?:the|this) offer|(?:fair|good|decent|low|reasonable) offer)\b",
+                       re.I)
+CAREER = re.compile(r"\b(career path|career roadmap|roadmap|career growth|career progression|learning path|"
+                    r"what should i learn|skills should i learn|how (?:do|can|should) i become|become an?|"
+                    r"grow into|next role|career plan)\b", re.I)
+GITHUB = re.compile(r"\bgit ?hub\b", re.I)
+_GH_USER = re.compile(r"github\.com/([A-Za-z0-9-]{1,39})|github\s+(?:profile\s+|username\s+|handle\s+|id\s+)?"
+                      r"(?:is\s+|:\s*)?@?([A-Za-z0-9-]{1,39})\b|@([A-Za-z0-9-]{1,39})\b", re.I)
+_GH_NOT_USER = {"profile", "account", "repos", "repositories", "and", "for", "to", "please", "projects", "page", "is"}
+_NEGOTIATE_WORDS = re.compile(r"\b(offer\w*|negotiat\w*|counter|got|letter|ctc|current\w*|another|competing|should|"
+                              r"accept|good|fair|low|high|enough|deal|package|salary|it|this|is|for|role|position|"
+                              r"company|me|email|mail|draft|write|script|reply|help|my)\b", re.I)
+_CAREER_WORDS = re.compile(r"\b(career|path|roadmap|growth|progression|learning|learn|become|grow|into|next|plan|"
+                           r"what|should|how|do|can|i|an?|the|role|skills?|to)\b", re.I)
 
 # follow-ups that REMOVE a filter; checked before anything else so "remove the salary filter" isn't a salary question
 _ALL_FILTERS = ("city", "min_salary_lpa", "max_experience_years", "work_mode", "notice_period_days")
@@ -109,6 +130,19 @@ def removals(message: str) -> set[str]:
         if pat.search(message):
             fields.update(names)
     return fields
+
+
+def github_username(message: str) -> str | None:
+    for m in _GH_USER.finditer(message):
+        name = next(g for g in m.groups() if g)
+        if name.lower() not in _GH_NOT_USER:
+            return name
+    return None
+
+
+def role_from(message: str, strip: re.Pattern) -> str | None:
+    role, _ = role_and_company(strip.sub(" ", message))
+    return role
 
 
 def role_and_company(message: str) -> tuple[str | None, str | None]:
@@ -200,6 +234,19 @@ def route(message: str, *, last_params: SearchParams | None = None, last_jobs: l
         return Route("help", notes=[note])
     if TRACK_THIS.match(msg):
         return Route("help", notes=["Which one? e.g. 'save the second job'."])
+
+    # 1a. Week 5 tools
+    if GITHUB.search(msg):
+        return Route("github_review", company=github_username(msg))  # company field carries the username
+    if NEGOTIATE.search(msg):
+        role = role_from(msg, _NEGOTIATE_WORDS) or default_keywords or (last_params.keywords if last_params else None)
+        p = parsed.model_copy(update={"keywords": role or "", "min_salary_lpa": None})
+        return Route("salary_negotiation", params=p, role=role)
+    if CAREER.search(msg):
+        role = role_from(msg, _CAREER_WORDS) or default_keywords
+        if not role:
+            return Route("help", notes=["For which role? e.g. 'roadmap to become a data engineer'."])
+        return Route("career_path", role=role)
     if APPS.search(msg):
         return Route("applications_status")
 

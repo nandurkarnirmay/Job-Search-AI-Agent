@@ -21,7 +21,7 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
         body: JSON.stringify({ email, password }),
       });
       setToken(access_token);
-      router.push(mode === "register" ? "/profile" : "/search");
+      router.push(mode === "register" ? "/profile" : "/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {

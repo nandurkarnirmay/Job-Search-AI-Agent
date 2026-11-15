@@ -1,4 +1,5 @@
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+// Same-origin gateway by default (see next.config.mjs); NEXT_PUBLIC_API_URL can point at a backend directly.
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/$/, "");
 const TOKEN_KEY = "jsa_token";
 
 // Week 2: token in localStorage for simplicity. Week 7 hardening: move to an httpOnly cookie.
@@ -86,11 +87,13 @@ export interface SearchResponse {
   sources_ok: string[];
   sources_failed: string[];
   cache_hit: boolean;
+  stale?: boolean;
   latency_ms: number;
 }
 
 export type Intent = "job_search" | "refine_search" | "company_research" | "salary_research" | "resume_review"
-  | "resume_match" | "interview_prep" | "track_application" | "applications_status" | "help";
+  | "resume_match" | "interview_prep" | "track_application" | "applications_status" | "salary_negotiation"
+  | "career_path" | "github_review" | "help";
 
 export interface SalaryStats {
   n: number;
@@ -107,7 +110,15 @@ export interface SalaryReport {
   experience_years: number | null;
   listings: SalaryStats | null;
   market: SalaryStats | null;
+  bands?: BandStats[];
   notes: string[];
+}
+
+export interface BandStats {
+  band: string;
+  label: string;
+  stats: SalaryStats | null;
+  n: number;
 }
 
 export interface CompanyReport {
@@ -176,6 +187,7 @@ export interface Profile {
   expected_lpa: number | null;
   notice_period_days: number | null;
   work_mode: WorkMode | "any" | null;
+  github_username?: string | null;
   career_goal: string | null;
   target_roles: string[];
   open_to_relocation: boolean | null;
@@ -261,7 +273,27 @@ export interface InterviewQuestion {
   text: string;
   category: "hr" | "behavioural" | "technical";
   skill: string | null;
-  source: "bank" | "llm";
+  source: "bank" | "llm" | "followup";
+  parent_id?: string | null;
+}
+
+export interface SpeechMetrics {
+  duration_seconds: number;
+  words_per_minute: number;
+  filler_per_100_words: number;
+  long_pauses: number;
+}
+
+export interface InterviewReport {
+  answered: number;
+  total: number;
+  average_score: number | null;
+  by_category: Record<string, number>;
+  strongest: { question: string; score: number }[];
+  weakest: { question: string; score: number }[];
+  average_wpm: number | null;
+  recurring_tips: string[];
+  next_steps: string[];
 }
 
 export interface AnswerFeedback {
@@ -272,6 +304,7 @@ export interface AnswerFeedback {
   key_points_missed: string[];
   tips: string[];
   coach_comment: string | null;
+  speech?: SpeechMetrics | null;
 }
 
 export interface InterviewSession {
@@ -290,6 +323,9 @@ export interface ChatExtras {
   interview: InterviewSession | null;
   application: Application | null;
   pipeline: Record<AppStatus, number> | null;
+  negotiation?: NegotiationAdvice | null;
+  career?: CareerPath | null;
+  github?: GitHubReport | null;
 }
 
 export interface AlertRun {
@@ -303,4 +339,105 @@ export interface AlertRun {
 
 export function saveJob(jobId: string): Promise<Application> {
   return api<Application>("/applications", { method: "POST", body: JSON.stringify({ job_id: jobId }) });
+}
+
+// ---------- Weeks 5-7 ----------
+export interface NegotiationAdvice {
+  role: string;
+  city: string | null;
+  experience_years: number | null;
+  offer_lpa: number;
+  benchmark: SalaryStats | null;
+  benchmark_source: string | null;
+  offer_percentile: number | null;
+  verdict: "below market" | "around market" | "above market" | "no data";
+  counter_lpa: number | null;
+  hike_pct: number | null;
+  talking_points: string[];
+  checklist: string[];
+  script: string;
+  notes: string[];
+}
+
+export interface RoadmapStep {
+  skill: string;
+  demand_share: number | null;
+  weeks: number;
+  status: "todo" | "learning" | "done";
+  resources: { title: string; url: string }[];
+  project: string | null;
+}
+
+export interface CareerPath {
+  role: string;
+  family: string | null;
+  ladder: { title: string; years: string }[];
+  adjacent_roles: string[];
+  have: string[];
+  phases: RoadmapStep[][];
+  jobs_sampled: number;
+  notes: string[];
+}
+
+export interface GitHubReport {
+  username: string;
+  profile_url: string;
+  name: string | null;
+  bio: string | null;
+  public_repos: number;
+  original_repos: number;
+  followers: number;
+  account_years: number;
+  active_repos_6m: number;
+  total_stars: number;
+  languages: Record<string, number>;
+  skills: string[];
+  top_repos: { name: string; url: string; language: string | null; stars: number; description: string | null }[];
+  missing_from_resume: string[];
+  unproven_on_github: string[];
+  checks: { name: string; score: number; comment: string }[];
+  notes: string[];
+}
+
+export type EventKind = "interview" | "follow_up" | "deadline" | "other";
+
+export interface CalendarEvent {
+  id: number;
+  kind: EventKind;
+  title: string;
+  starts_at: string;
+  duration_minutes: number;
+  location: string | null;
+  notes: string | null;
+  remind: boolean;
+  application_id: number | null;
+  google_calendar_url: string;
+}
+
+export interface MyAnalytics {
+  funnel: { tracked: number; applied: number; interviews: number; offers: number; interview_rate: number | null;
+    offer_rate: number | null; median_days_saved_to_applied: number | null };
+  pipeline: Record<string, number>;
+  weekly: { searches: number[]; applications: number[]; practice_sessions: number[] };
+  week_starts: string[];
+  practice_trend: { session: number; role: string; average: number; answered: number }[];
+  top_searches: { keywords: string; count: number }[];
+  alerts: { active: number; runs: number; new_jobs_found: number };
+  skills: Record<string, number>;
+}
+
+/** Only http(s) links are rendered as links: job and repo URLs come from third-party APIs. */
+export const safeUrl = (u: string | null | undefined) => (u && /^https?:\/\//.test(u) ? u : undefined);
+
+/** Authenticated file download (an <a href> can't send the bearer token). */
+export async function download(path: string, filename: string) {
+  const token = getToken();
+  const res = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new ApiError(res.status, "download_failed", "Download failed");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

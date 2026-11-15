@@ -1,0 +1,64 @@
+{"message": "data analyst jobs in hyderabad", "intent": "job_search"}
+{"message": "looking for java developer openings in chennai above 10 lpa", "intent": "job_search"}
+{"message": "any fresher roles for mechanical engineers in pune", "intent": "job_search"}
+{"message": "remote react developer positions", "intent": "job_search"}
+{"message": "show me devops engineer vacancies in gurgaon", "intent": "job_search"}
+{"message": "find internships for data science", "intent": "job_search"}
+{"message": "sales executive jobs bangalore", "intent": "job_search"}
+{"message": "hiring for quality engineer in noida with 3 years experience", "intent": "job_search"}
+{"message": "graduate engineer trainee openings", "intent": "job_search"}
+{"message": "python developer", "intent": "job_search"}
+{"message": "what about mumbai?", "intent": "refine_search", "has_last": true}
+{"message": "only hybrid ones", "intent": "refine_search", "has_last": true}
+{"message": "show more results", "intent": "refine_search", "has_last": true}
+{"message": "above 15 lpa please", "intent": "refine_search", "has_last": true}
+{"message": "any city is fine", "intent": "refine_search", "has_last": true}
+{"message": "drop the experience filter", "intent": "refine_search", "has_last": true}
+{"message": "clear all filters", "intent": "refine_search", "has_last": true}
+{"message": "with 60 days notice", "intent": "refine_search", "has_last": true}
+{"message": "tell me about TCS", "intent": "company_research"}
+{"message": "what is it like working at Flipkart", "intent": "company_research"}
+{"message": "is Wipro a good company for freshers", "intent": "company_research"}
+{"message": "research Zerodha", "intent": "company_research"}
+{"message": "info on Larsen & Toubro", "intent": "company_research"}
+{"message": "tell me about the first company", "intent": "company_research", "has_last": true}
+{"message": "what does the third employer do", "intent": "company_research", "has_last": true}
+{"message": "average salary for a product manager in bangalore", "intent": "salary_research"}
+{"message": "how much does a civil engineer earn", "intent": "salary_research"}
+{"message": "salary range of an SDE with 2 years in hyderabad", "intent": "salary_research"}
+{"message": "what's the pay for a data engineer", "intent": "salary_research"}
+{"message": "salary of the second job", "intent": "salary_research", "has_last": true}
+{"message": "review my resume", "intent": "resume_review"}
+{"message": "check my CV for a data analyst role", "intent": "resume_review"}
+{"message": "what skills am I missing for machine learning engineer", "intent": "resume_review"}
+{"message": "is my resume ATS friendly", "intent": "resume_review"}
+{"message": "how does my resume match the second job", "intent": "resume_match", "has_last": true}
+{"message": "ATS score for the first one", "intent": "resume_match", "has_last": true}
+{"message": "compare my CV with job #2", "intent": "resume_match", "has_last": true}
+{"message": "interview questions for a java developer", "intent": "interview_prep"}
+{"message": "prepare me for the second job interview", "intent": "interview_prep", "has_last": true}
+{"message": "mock interview for business analyst at Deloitte", "intent": "interview_prep"}
+{"message": "help me practice for my TCS interview", "intent": "interview_prep"}
+{"message": "save the first job", "intent": "track_application", "has_last": true}
+{"message": "add #3 to my tracker", "intent": "track_application", "has_last": true}
+{"message": "bookmark the second one", "intent": "track_application", "has_last": true}
+{"message": "show my applications", "intent": "applications_status"}
+{"message": "how many jobs have I applied to", "intent": "applications_status"}
+{"message": "my pipeline", "intent": "applications_status"}
+{"message": "I got an offer of 7 LPA for data analyst in Pune, should I negotiate", "intent": "salary_negotiation"}
+{"message": "help me negotiate my offer of 12 lpa as a java developer", "intent": "salary_negotiation"}
+{"message": "they offered me 5.5 lpa for GET mechanical, current ctc 4 lpa", "intent": "salary_negotiation"}
+{"message": "write a counter offer email for my 9 LPA offer", "intent": "salary_negotiation"}
+{"message": "is 6 lpa a fair offer for a fresher data scientist", "intent": "salary_negotiation"}
+{"message": "how do I become a data engineer", "intent": "career_path"}
+{"message": "roadmap for frontend developer", "intent": "career_path"}
+{"message": "what should I learn to become an ML engineer", "intent": "career_path"}
+{"message": "career path for a mechanical design engineer", "intent": "career_path"}
+{"message": "how can I grow into a product manager role", "intent": "career_path"}
+{"message": "review my github", "intent": "github_review"}
+{"message": "analyse github.com/asha-dev", "intent": "github_review"}
+{"message": "my github is ravi-k, what should I improve", "intent": "github_review"}
+{"message": "hi", "intent": "help"}
+{"message": "what can you do?", "intent": "help"}
+{"message": "thanks", "intent": "help"}
+{"message": "show me jobs", "intent": "help"}

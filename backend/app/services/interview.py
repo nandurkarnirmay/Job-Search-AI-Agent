@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent.llm import get_llm
-from app.domain import AnswerFeedback, FeedbackItem, InterviewQuestion
+from app.domain import AnswerFeedback, FeedbackItem, InterviewQuestion, InterviewReport, SpeechMetrics
 from app.models import InterviewSession, User
 from app.monitoring import LLM_CALLS
 from app.schemas import InterviewOut
@@ -252,3 +252,117 @@ def create_session(db: Session, user: User, role: str, company: str | None,
     return s, notes
 
 
+
+
+# ---------------- Week 6: spoken answers, follow-ups, session report ----------------
+SPOKEN_FILLERS = re.compile(r"\b(um+|uh+|erm|hmm|basically|actually|literally|you know|kind of|sort of|like|so yeah)\b",
+                            re.I)
+PACE = (110, 160)  # comfortable interview pace, words per minute
+
+
+def speech_items(answer: str, duration_seconds: float, long_pauses: int) -> tuple[SpeechMetrics, list[FeedbackItem]]:
+    words = max(len(_WORDS.findall(answer)), 1)
+    wpm = round(words / max(duration_seconds, 1) * 60)
+    fillers = round(len(SPOKEN_FILLERS.findall(answer)) / words * 100, 1)
+    m = SpeechMetrics(duration_seconds=round(duration_seconds, 1), words_per_minute=wpm,
+                      filler_per_100_words=fillers, long_pauses=long_pauses)
+    lo, hi = PACE
+    pace = FeedbackItem(name="Pace", score=1.0 if lo <= wpm <= hi else 0.5 if lo - 30 <= wpm <= hi + 30 else 0.2,
+                        comment=f"{wpm} words/min: " + ("comfortable." if lo <= wpm <= hi else
+                                                         "a bit slow; tighten it." if wpm < lo else
+                                                         "too fast; slow down and pause between points."))
+    smooth = fillers <= 3 and long_pauses <= 2
+    fluency = FeedbackItem(name="Fluency", score=1.0 if smooth else 0.5 if fillers <= 7 else 0.2,
+                           comment=f"{fillers} filler words per 100 words, {long_pauses} long pauses. "
+                                   + ("Smooth delivery." if smooth else
+                                      "Replace fillers with a short silent pause."))
+    return m, [pace, fluency]
+
+
+def evaluate_spoken(q: InterviewQuestion, answer: str, duration_seconds: float, long_pauses: int,
+                    company: str | None = None) -> AnswerFeedback:
+    """Content checks as for typed answers, plus delivery (pace, fillers, pauses), folded into the 1-5 score."""
+    fb = evaluate_answer(q, answer, company)
+    metrics, items = speech_items(answer, duration_seconds, long_pauses)
+    fb.speech, fb.criteria = metrics, fb.criteria + items
+    if fb.word_count >= 8:
+        fb.score = 1 + round(4 * sum(c.score for c in fb.criteria) / len(fb.criteria))
+    fb.tips += [i.comment for i in items if i.score < 0.7]
+    return fb
+
+
+FOLLOWUP_PROMPT = """You are interviewing a candidate for {role}. Ask ONE short follow-up question that probes the
+weakest part of their answer (a missing detail, a claim without evidence, or their own contribution).
+Question: {q}
+Answer: {a}
+Reply with the question only."""
+
+
+def followup_for(q: InterviewQuestion, answer: str, fb: AnswerFeedback, role: str, existing_ids: set[str]) \
+        -> InterviewQuestion | None:
+    """One follow-up per original question (never for follow-ups), like a real interviewer digging in."""
+    if q.source == "followup" or f"{q.id}f" in existing_ids or fb.word_count < 8:
+        return None
+    text = None
+    llm = get_llm()
+    if llm is not None:
+        try:
+            out = llm.invoke(FOLLOWUP_PROMPT.format(role=role, q=q.text, a=answer[:1500])).content
+            out = (out if isinstance(out, str) else str(out)).strip().strip('"')
+            LLM_CALLS.labels("interview_followup", "ok").inc()
+            if 10 < len(out) < 250 and out.endswith("?"):
+                text = out
+        except Exception as e:
+            LLM_CALLS.labels("interview_followup", "error").inc()
+            log.warning("follow-up generation failed: %s", e)
+    if text is None:  # rule-based follow-ups from what the feedback found missing
+        names = {c.name: c.score for c in fb.criteria}
+        if fb.key_points_missed:
+            text = f"You didn't mention {fb.key_points_missed[0]}. Can you explain that part?"
+        elif names.get("Action (what *you* did)", 1) < 1:
+            text = "What exactly did you do yourself, as opposed to the team?"
+        elif names.get("Result", 1) < 1 or names.get("Measurable impact", 1) < 1:
+            text = "What was the measurable outcome, and how did you know it worked?"
+        elif names.get("Justified", 1) < 1:
+            text = "How did you arrive at that number?"
+        elif q.category == "technical":
+            text = "Can you give an example of where you used this in a project, and what went wrong?"
+        else:
+            return None
+    return InterviewQuestion(id=f"{q.id}f", text=text, category=q.category, skill=q.skill, source="followup",
+                             parent_id=q.id)
+
+
+def session_report(questions: list[dict], answers: dict) -> InterviewReport:
+    qs = {q["id"]: q for q in questions}
+    scored = [(qs[qid], a["feedback"]) for qid, a in answers.items() if qid in qs and a.get("feedback")]
+    rep = InterviewReport(answered=len(scored), total=len(questions))
+    if not scored:
+        rep.next_steps.append("Answer at least a few questions to get a report.")
+        return rep
+    scores = [fb["score"] for _, fb in scored]
+    rep.average_score = round(sum(scores) / len(scores), 1)
+    cats: dict[str, list[int]] = {}
+    for q, fb in scored:
+        cats.setdefault(q["category"], []).append(fb["score"])
+    rep.by_category = {c: round(sum(v) / len(v), 1) for c, v in cats.items()}
+    ranked = sorted(scored, key=lambda x: x[1]["score"])
+    rep.weakest = [{"question": q["text"], "score": fb["score"]} for q, fb in ranked if fb["score"] <= 3][:2]
+    rep.strongest = [{"question": q["text"], "score": fb["score"]} for q, fb in ranked[::-1] if fb["score"] >= 4][:2]
+    wpms = [fb["speech"]["words_per_minute"] for _, fb in scored if fb.get("speech")]
+    rep.average_wpm = round(sum(wpms) / len(wpms)) if wpms else None
+    tip_counts: dict[str, int] = {}
+    for _, fb in scored:
+        for tip in fb.get("tips", []):
+            key = re.sub(r"\d+", "#", tip)  # "45 words: a bit short" and "30 words: …" are the same tip
+            tip_counts[key] = tip_counts.get(key, 0) + 1
+    rep.recurring_tips = [t for t, n in sorted(tip_counts.items(), key=lambda x: -x[1]) if n >= 2][:3]
+    weakest_cat = min(rep.by_category, key=rep.by_category.get)
+    rep.next_steps.append(f"Your weakest area is {weakest_cat} questions (avg {rep.by_category[weakest_cat]}/5): "
+                          "practise 3 more of those before the interview.")
+    if rep.answered < rep.total:
+        left = rep.total - rep.answered
+        rep.next_steps.append(f"{left} question{'s' if left != 1 else ''} still unanswered.")
+    if rep.average_wpm and not PACE[0] <= rep.average_wpm <= PACE[1]:
+        rep.next_steps.append(f"Your average pace is {rep.average_wpm} words/min; aim for {PACE[0]}–{PACE[1]}.")
+    return rep

@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import JobCard from "@/components/JobCard";
 import { CompanyCard, SalaryCard } from "@/components/Reports";
 import { ATSCard, InterviewCard, PipelineBar, ReviewCard } from "@/components/Week4Cards";
+import { CareerCard, GitHubCard, NegotiationCard } from "@/components/Week5Cards";
 import {
   api, ApiError, ChatExtras, ChatResponse, CompanyReport, createAlert, Intent, Job, SalaryReport, SearchParams,
   ThreadMessage, ThreadSummary,
@@ -23,6 +24,8 @@ const EXAMPLES = [
   "Remote Python developer jobs in Bengaluru above 8 LPA",
   "Tell me about Infosys",
   "Average salary of a data analyst in Pune",
+  "I got an offer of 7 LPA for data analyst in Pune with 2 years",
+  "Roadmap to become a data engineer",
 ];
 const FOLLOW_UPS = ["What about Hyderabad?", "Remove the salary filter", "Tell me about the first company",
   "How does my resume match the first job?", "Save the first job", "Prepare me for the first job interview"];
@@ -67,6 +70,9 @@ function Message({ m }: { m: Msg }) {
       {m.extras?.resume_review && <ReviewCard r={m.extras.resume_review} />}
       {m.extras?.interview && <InterviewCard s={m.extras.interview} />}
       {m.extras?.pipeline && <PipelineBar p={m.extras.pipeline} />}
+      {m.extras?.negotiation && <NegotiationCard a={m.extras.negotiation} />}
+      {m.extras?.career && <CareerCard p={m.extras.career} />}
+      {m.extras?.github && <GitHubCard r={m.extras.github} />}
       {isSearch && m.jobs && m.jobs.length > 0 && (
         <div className="space-y-2">
           {m.jobs.slice(0, 8).map((j) => <JobCard key={j.id} job={j} />)}

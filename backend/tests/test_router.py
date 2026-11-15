@@ -67,7 +67,8 @@ def test_profile_target_role_used_for_generic_search():
 
 
 def test_unmatched_message_is_not_confident():
-    assert route("which is better for my career growth honestly").confident is False
+    # (Week 5: "career growth" now routes to career_path, so this uses a genuinely unmatched message)
+    assert route("which would you pick if you were me honestly").confident is False
 
 
 @pytest.mark.parametrize("message,name", [
@@ -125,3 +126,38 @@ def test_interview_role_and_company_extraction():
     assert (r.role, r.company) == ("python developer", "Infosys")
     assert route("interview tips").intent == "help"                         # no role anywhere
     assert route("interview tips", default_keywords="data analyst").role == "data analyst"
+
+
+
+# ---------- Week 5 ----------
+@pytest.mark.parametrize("message,intent", [
+    ("I got an offer of 7 LPA for data analyst in Pune, should I negotiate", "salary_negotiation"),
+    ("is 6 lpa a fair offer for a fresher data scientist", "salary_negotiation"),
+    ("write a counter offer email for my 9 LPA offer", "salary_negotiation"),
+    ("how do I become a data engineer", "career_path"),
+    ("roadmap for frontend developer", "career_path"),
+    ("review my github", "github_review"),
+    ("analyse github.com/asha-dev", "github_review"),
+    ("python jobs with salary above 8 lpa", "job_search"),   # an LPA filter is not an offer
+])
+def test_week5_intents(message, intent):
+    assert route(message, last_params=LAST4, last_jobs=JOBS).intent == intent
+
+
+def test_negotiation_and_career_extract_role():
+    r = route("I got an offer of 8 LPA for data analyst in Pune with 2 years")
+    assert (r.role, r.params.city, r.params.max_experience_years) == ("data analyst", "Pune", 2.0)
+    assert route("counter offer email for 12 LPA java developer").role == "java developer"
+    assert route("how do I become a data scientist").role == "data scientist"
+    assert route("career path").intent == "help"
+    assert route("career path", default_keywords="data analyst").role == "data analyst"
+
+
+def test_github_username_extraction():
+    assert route("my github is ravi-k, what should I improve").company == "ravi-k"
+    assert route("check my GitHub profile please").company is None
+
+
+def test_refine_handles_filler_phrases():
+    assert route("only hybrid ones", last_params=LAST4).params.work_mode == "hybrid"
+    assert route("any city is fine", last_params=LAST4).params.city is None

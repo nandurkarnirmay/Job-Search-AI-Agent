@@ -39,6 +39,8 @@ jobs:
         run: python -m app.migrate && python -m app.migrate
         env:
           DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/test
+      - name: Accuracy eval (router intents, skill extraction)
+        run: python -m scripts.eval_accuracy --check
       - name: Tests (SQLite)
         run: pytest -q
       - name: Tests (Postgres)
@@ -61,7 +63,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
         env:
-          NEXT_PUBLIC_API_URL: https://example.invalid
+          API_URL: https://example.invalid
 
   deploy-backend:
     needs: [backend, frontend]

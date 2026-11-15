@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.crypto import EncryptedJSON, EncryptedText
 from app.db import Base
 
 
@@ -25,6 +26,11 @@ class User(Base):
     resume: Mapped["Resume"] = relationship(back_populates="user", uselist=False, cascade="all, delete-orphan")
     applications: Mapped[list["Application"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     interviews: Mapped[list["InterviewSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    events: Mapped[list["CalendarEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    skill_progress: Mapped[list["SkillProgress"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    # Week 6: secret token for the private iCalendar feed URL (rotate to revoke)
+    calendar_token: Mapped[str | None] = mapped_column(String(64))
+    __table_args__ = (UniqueConstraint("calendar_token", name="uq_users_calendar_token"),)
 
 
 class Profile(Base):
@@ -44,6 +50,7 @@ class Profile(Base):
     career_goal: Mapped[str | None] = mapped_column(Text)
     target_roles: Mapped[list | None] = mapped_column(JSON)
     open_to_relocation: Mapped[bool | None] = mapped_column(Boolean)
+    github_username: Mapped[str | None] = mapped_column(String(39))  # Week 5
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     user: Mapped[User] = relationship(back_populates="profile")
@@ -91,7 +98,7 @@ class ChatMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     thread_id: Mapped[str] = mapped_column(ForeignKey("chat_threads.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(10))  # user | assistant
-    content: Mapped[str] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(EncryptedText)
     intent: Mapped[str | None] = mapped_column(String(20))
     payload: Mapped[dict | None] = mapped_column(JSON)  # jobs / company / salary shown with the message
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -146,7 +153,7 @@ class Resume(Base):
     filename: Mapped[str] = mapped_column(String(200))
     kind: Mapped[str] = mapped_column(String(10))
     pages: Mapped[int] = mapped_column(Integer, default=0)
-    text: Mapped[str] = mapped_column(Text)  # emails/phone numbers redacted
+    text: Mapped[str] = mapped_column(EncryptedText)  # emails/phone numbers redacted, then encrypted at rest
     word_count: Mapped[int] = mapped_column(Integer)
     skills: Mapped[list] = mapped_column(JSON, default=list)
     sections: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -174,7 +181,7 @@ class Application(Base):
     salary_min_lpa: Mapped[float | None] = mapped_column(Float)
     salary_max_lpa: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(12), default="saved", index=True)
-    notes: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(EncryptedText)
     next_action_on: Mapped[date | None] = mapped_column(Date)  # e.g. follow-up or interview date
     history: Mapped[list] = mapped_column(JSON, default=list)  # [{"status", "at"}]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -191,7 +198,43 @@ class InterviewSession(Base):
     role: Mapped[str] = mapped_column(String(120))
     company: Mapped[str | None] = mapped_column(String(200))
     questions: Mapped[list] = mapped_column(JSON)  # [InterviewQuestion]
-    answers: Mapped[dict] = mapped_column(JSON, default=dict)  # {question_id: {"answer", "feedback"}}
+    answers: Mapped[dict] = mapped_column(EncryptedJSON, default=dict)  # {question_id: {"answer", "feedback"}}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped[User] = relationship(back_populates="interviews")
+
+
+class CalendarEvent(Base):
+    """Interview, follow-up or deadline. Exported via a private iCalendar feed; reminders emailed a day before."""
+
+    __tablename__ = "calendar_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    application_id: Mapped[int | None] = mapped_column(ForeignKey("applications.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(12))  # interview | follow_up | deadline | other
+    title: Mapped[str] = mapped_column(String(200))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    location: Mapped[str | None] = mapped_column(String(500))  # address or meeting link
+    notes: Mapped[str | None] = mapped_column(EncryptedText)
+    remind: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    user: Mapped[User] = relationship(back_populates="events")
+
+
+class SkillProgress(Base):
+    """Career roadmap tracking: one row per skill the user is learning."""
+
+    __tablename__ = "skill_progress"
+    __table_args__ = (UniqueConstraint("user_id", "skill", name="uq_skill_progress_user_skill"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    skill: Mapped[str] = mapped_column(String(60))
+    status: Mapped[str] = mapped_column(String(10), default="learning")  # todo | learning | done
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    user: Mapped[User] = relationship(back_populates="skill_progress")

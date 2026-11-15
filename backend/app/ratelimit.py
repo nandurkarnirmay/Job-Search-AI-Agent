@@ -8,8 +8,8 @@ from app.errors import RateLimitedError
 WINDOW_SECONDS = 60
 
 
-def check_rate_limit(key: str) -> None:
-    limit = get_settings().rate_limit_per_minute
+def check_rate_limit(key: str, limit: int | None = None) -> None:
+    limit = limit or get_settings().rate_limit_per_minute
     window = int(time.time() // WINDOW_SECONDS)
     count = get_cache().incr(f"rl:{key}:{window}", WINDOW_SECONDS + 5)
     if count > limit:

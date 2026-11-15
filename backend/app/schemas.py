@@ -7,6 +7,9 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.domain import (
     AnswerFeedback,
     ATSMatch,
+    CareerPath,
+    GitHubReport,
+    NegotiationAdvice,
     CompanyReport,
     InterviewQuestion,
     JobListing,
@@ -48,6 +51,7 @@ class ProfileIn(BaseModel):
     career_goal: str | None = Field(default=None, max_length=500)
     target_roles: list[str] = Field(default_factory=list, max_length=5)
     open_to_relocation: bool | None = None
+    github_username: str | None = Field(default=None, max_length=39, pattern=r"^[A-Za-z0-9-]*$")
 
     @field_validator("preferred_cities", "skills", "target_roles", mode="before")
     @classmethod
@@ -66,6 +70,7 @@ class SearchOut(BaseModel):
     sources_ok: list[str]
     sources_failed: list[str]
     cache_hit: bool
+    stale: bool = False
     latency_ms: int
 
 
@@ -75,7 +80,8 @@ class ChatIn(BaseModel):
 
 
 Intent = Literal["job_search", "refine_search", "company_research", "salary_research", "resume_review",
-                 "resume_match", "interview_prep", "track_application", "applications_status", "help"]
+                 "resume_match", "interview_prep", "track_application", "applications_status", "salary_negotiation",
+                 "career_path", "github_review", "help"]
 
 
 class ChatOut(BaseModel):
@@ -230,11 +236,15 @@ class InterviewOut(BaseModel):
 
 class AnswerIn(BaseModel):
     answer: str = Field(min_length=1, max_length=5000)
+    # spoken answers (transcribed in the browser): speaking time and pauses longer than 2 s
+    duration_seconds: float | None = Field(default=None, gt=0, le=900)
+    long_pauses: int = Field(default=0, ge=0, le=200)
 
 
 class AnswerOut(BaseModel):
     question_id: str
     feedback: AnswerFeedback
+    followup: InterviewQuestion | None = None
 
 
 class AlertRunOut(BaseModel):
@@ -254,6 +264,79 @@ class ChatExtras(BaseModel):
     interview: InterviewOut | None = None
     application: ApplicationOut | None = None
     pipeline: dict[str, int] | None = None
+    negotiation: "NegotiationAdvice | None" = None
+    career: "CareerPath | None" = None
+    github: "GitHubReport | None" = None
 
 
+ChatExtras.model_rebuild()
 ChatOut.model_rebuild()
+
+
+# ---------- Week 5-6 ----------
+EventKind = Literal["interview", "follow_up", "deadline", "other"]
+
+
+class EventIn(BaseModel):
+    kind: EventKind = "interview"
+    title: str = Field(min_length=2, max_length=200)
+    starts_at: datetime  # send with timezone, e.g. 2026-11-20T15:00:00+05:30
+    duration_minutes: int = Field(default=60, ge=5, le=600)
+    location: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    remind: bool = True
+    application_id: int | None = None
+
+    @field_validator("starts_at")
+    @classmethod
+    def _aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("include a timezone offset, e.g. +05:30")
+        return v
+
+
+class EventPatch(BaseModel):
+    kind: EventKind | None = None
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    starts_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=5, le=600)
+    location: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    remind: bool | None = None
+
+
+class EventOut(BaseModel):
+    id: int
+    kind: EventKind
+    title: str
+    starts_at: datetime
+    duration_minutes: int
+    location: str | None
+    notes: str | None
+    remind: bool
+    application_id: int | None
+    google_calendar_url: str
+
+
+class FeedOut(BaseModel):
+    feed_url: str
+    webcal_url: str
+
+
+class NegotiationIn(BaseModel):
+    role: str = Field(min_length=2, max_length=100)
+    offer_lpa: float = Field(gt=0, le=500)
+    city: str | None = Field(default=None, max_length=60)
+    experience_years: float | None = Field(default=None, ge=0, le=50)
+    current_lpa: float | None = Field(default=None, gt=0, le=500)
+    competing_offer_lpa: float | None = Field(default=None, gt=0, le=500)
+    notice_period_days: int | None = Field(default=None, ge=0, le=180)
+
+
+class SkillStatusIn(BaseModel):
+    skill: str = Field(min_length=1, max_length=60)
+    status: Literal["todo", "learning", "done"]
+
+
+class GitHubIn(BaseModel):
+    username: str = Field(min_length=1, max_length=39)

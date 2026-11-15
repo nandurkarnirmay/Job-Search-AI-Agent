@@ -11,6 +11,8 @@ os.environ.update({
     "JWT_SECRET": "test-secret", "ADMIN_EMAILS": "admin@example.com",
     "AUTO_MIGRATE": "false", "WIKIPEDIA_ENABLED": "false",  # tests build tables from models; no network
     "SMTP_HOST": "", "EMAIL_FROM": "", "CRON_TOKEN": "",     # email off unless a test turns it on
+    "JOOBLE_API_KEY": "", "GITHUB_TOKEN": "", "FIELD_ENCRYPTION_KEYS": "test-key", "METRICS_TOKEN": "",
+    "SERVICE": "all",
 })
 
 import pytest  # noqa: E402
@@ -79,13 +81,38 @@ class FakeSalary:
         return self.hist
 
 
+class FakeGitHub:
+    def __init__(self):
+        self.users, self.repo_lists, self.down = {}, {}, False
+
+    def _check(self):
+        if self.down:
+            from app.sources.base import SourceError
+            raise SourceError("github: down")
+
+    def user(self, username):
+        self._check()
+        return self.users.get(username.lower())
+
+    def repos(self, username):
+        self._check()
+        return self.repo_lists.get(username.lower(), [])
+
+
 @pytest.fixture(autouse=True)
 def no_external_tools(monkeypatch):
-    """Company/salary tools must never hit the network in tests. Tests override these when needed."""
+    """Company/salary/GitHub tools must never hit the network in tests. Tests override these when needed."""
     wiki, salary = FakeWiki(), FakeSalary()
     monkeypatch.setattr("app.services.company_research.get_wiki_client", lambda: wiki)
     monkeypatch.setattr("app.services.salary_research.get_salary_client", lambda: salary)
     return wiki, salary
+
+
+@pytest.fixture(autouse=True)
+def fake_github(monkeypatch):
+    gh = FakeGitHub()
+    monkeypatch.setattr("app.services.github_profile.get_github_client", lambda: gh)
+    return gh
 
 
 @pytest.fixture

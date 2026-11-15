@@ -8,6 +8,8 @@ from app.config import get_settings
 from app.db import get_db
 from app.errors import AppError
 from app.services.alert_dispatch import dispatch_due_alerts
+from app.services.reminders import dispatch_reminders
+from app.services.retention import purge_old_data
 
 router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=False)
 
@@ -23,4 +25,4 @@ def _check(token: str | None) -> None:
 @router.post("/alerts/dispatch")
 def dispatch(x_cron_token: str | None = Header(default=None), db: Session = Depends(get_db)):
     _check(x_cron_token)
-    return dispatch_due_alerts(db)
+    return {**dispatch_due_alerts(db), **dispatch_reminders(db), **purge_old_data(db)}

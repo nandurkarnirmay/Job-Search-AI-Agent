@@ -14,3 +14,4 @@ ignore = ["B008"]  # FastAPI Depends() in defaults is intended
 # data tables (skills taxonomy, interview question bank): one entry per line reads better than wrapped strings
 "app/services/skills.py" = ["E501"]
 "app/services/interview_bank.py" = ["E501"]
+"app/services/career_data.py" = ["E501"]

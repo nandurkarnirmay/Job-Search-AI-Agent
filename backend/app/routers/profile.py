@@ -32,6 +32,7 @@ def update_profile(body: ProfileIn, user: User = Depends(get_current_user), db: 
         if r.strip():
             roles.setdefault(r.strip().lower(), r.strip())  # case-insensitive dedupe, keep first spelling
     data["target_roles"] = list(roles.values())
+    data["github_username"] = (data.get("github_username") or "").strip() or None
     for key, value in data.items():
         setattr(profile, key, value)
     db.commit()

@@ -8,7 +8,15 @@ from app.domain import InterviewQuestion
 from app.errors import AppError
 from app.models import InterviewSession, User
 from app.schemas import AnswerIn, AnswerOut, InterviewIn, InterviewOut
-from app.services.interview import create_session, evaluate_answer, interview_out
+from app.domain import InterviewReport
+from app.services.interview import (
+    create_session,
+    evaluate_answer,
+    evaluate_spoken,
+    followup_for,
+    interview_out,
+    session_report,
+)
 from app.services.search_service import get_job
 
 router = APIRouter(prefix="/interview", tags=["interview"])
@@ -50,10 +58,23 @@ def answer(sid: int, qid: str, body: AnswerIn, user: User = Depends(rate_limited
     q = next((InterviewQuestion(**q) for q in s.questions if q["id"] == qid), None)
     if q is None:
         raise AppError("Question not found.", code="not_found", status_code=404)
-    fb = evaluate_answer(q, body.answer, s.company)
+    if body.duration_seconds:
+        fb = evaluate_spoken(q, body.answer, body.duration_seconds, body.long_pauses, s.company)
+    else:
+        fb = evaluate_answer(q, body.answer, s.company)
     s.answers = {**(s.answers or {}), qid: {"answer": body.answer, "feedback": fb.model_dump()}}
+    followup = followup_for(q, body.answer, fb, s.role, {x["id"] for x in s.questions})
+    if followup:  # inserted right after its parent so the practice page shows it next
+        idx = next(i for i, x in enumerate(s.questions) if x["id"] == qid)
+        s.questions = s.questions[:idx + 1] + [followup.model_dump()] + s.questions[idx + 1:]
     db.commit()
-    return AnswerOut(question_id=qid, feedback=fb)
+    return AnswerOut(question_id=qid, feedback=fb, followup=followup)
+
+
+@router.get("/sessions/{sid}/report", response_model=InterviewReport)
+def report(sid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    s = _own(db, user, sid)
+    return session_report(s.questions, s.answers or {})
 
 
 @router.delete("/sessions/{sid}", status_code=204)

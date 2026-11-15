@@ -43,7 +43,7 @@ def test_week2_database_is_stamped_and_upgraded_without_data_loss():
     _assert_matches_models(url)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT email FROM users")).scalar() == "a@b.com"
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0004"
 
 
 def test_downgrade_round_trip():

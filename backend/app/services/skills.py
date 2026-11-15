@@ -83,7 +83,7 @@ IMPLIES: dict[str, list[str]] = {
     "Tableau": ["Data Visualization"], "Simulink": ["MATLAB"], "VBA": ["Excel"], "React Native": ["React"],
 }
 
-_EDGE_L = r"(?<![a-z0-9+#])"
+_EDGE_L = r"(?<![a-z0-9+#.])"  # "." too, so the "js" alias doesn't fire inside "React.js"
 _EDGE_R = r"(?![a-z0-9+#])"
 
 
@@ -99,15 +99,15 @@ def _patterns() -> list[tuple[str, re.Pattern]]:
 
 # words that are skills only in context; "node" alone is too ambiguous, so require a tech neighbour
 _AMBIGUOUS = {"Node.js": re.compile(r"(?<![a-z0-9+#])node(?![a-z0-9+#.])", re.I),
-              "Spring": re.compile(r"(?<![a-z0-9+#])spring(?![a-z0-9+#])", re.I),
+              "Spring": re.compile(r"(?<![a-z0-9+#])spring(?![a-z0-9+#])(?!\s*boot)", re.I),
               "Lean / Six Sigma": re.compile(r"(?<![a-z0-9])lean(?![a-z0-9])", re.I),
               "Swift": re.compile(r"(?<![a-z0-9])swift(?![a-z0-9])", re.I),
               "Rust": re.compile(r"(?<![a-z0-9])rust(?![a-z0-9])", re.I),
               "Communication": re.compile(r"(?<![a-z0-9])communication(?![a-z0-9 ]*skills)", re.I),
               "REST APIs": re.compile(r"(?<![a-z0-9])rest(?![a-z0-9 ]*(?:api|apis|ful))", re.I),
               "Sales": re.compile(r"(?<![a-z0-9])sales(?![a-z0-9 ]*(?:force))", re.I)}
-_STRONG = {"Node.js": ["node.js", "nodejs"], "Spring": ["spring boot", "spring mvc", "springboot"],
-           "Lean / Six Sigma": ["six sigma", "lean manufacturing", "kaizen"], "Swift": ["swiftui", "ios"],
+_STRONG = {"Node.js": ["node.js", "nodejs"], "Spring": ["spring mvc", "spring framework", "spring core"],
+           "Lean / Six Sigma": ["six sigma", "lean manufacturing", "kaizen", "5s"], "Swift": ["swiftui", "ios"],
            "Rust": ["rustlang", "cargo"], "Communication": ["communication skills"],
            "REST APIs": ["rest api", "rest apis", "restful"], "Sales": ["b2b sales", "inside sales", "sales target"]}
 _TECH_CONTEXT = re.compile(r"(?<![a-z0-9])(developer|engineer|programming|framework|backend|frontend|software|"
@@ -128,12 +128,12 @@ def extract_skills(text: str, *, with_implied: bool = True) -> list[str]:
     for canonical, pat in _patterns():
         if not pat.search(t):
             continue
-        if canonical in _AMBIGUOUS:
-            strong = any(s in t for s in _STRONG[canonical])
-            only_bare = not strong and _AMBIGUOUS[canonical].search(t)
-            if only_bare and canonical in {"Node.js", "Spring", "Swift", "Rust"} and not _TECH_CONTEXT.search(t):
+        if canonical in _AMBIGUOUS and not any(s in t for s in _STRONG[canonical]):
+            if not _AMBIGUOUS[canonical].search(t):
+                continue  # the only hit was inside a longer name, e.g. "spring" in "Spring Boot"
+            if canonical in {"Node.js", "Spring", "Swift", "Rust"} and not _TECH_CONTEXT.search(t):
                 continue  # "spring internship", "rust-proof coating": no tech context, not a skill
-            if only_bare and canonical in {"Lean / Six Sigma", "Communication", "REST APIs", "Sales"}:
+            if canonical in {"Lean / Six Sigma", "Communication", "REST APIs", "Sales"}:
                 continue  # bare words like "lean", "rest", "sales" are too common to count
         if canonical not in found:
             found.append(canonical)

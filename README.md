@@ -4,10 +4,17 @@ AI career platform for the Indian job market. Ask in plain English ("remote Pyth
 8 LPA for a fresher") and a LangGraph agent turns it into a search across several job sources, filtered by
 city, experience, salary in LPA, work mode and notice period.
 
-**Track B (Advanced)** · Status: **Week 4**: the agent has 6 career tools (job search, company research, salary
-research, resume/ATS analysis, interview practice, application tracker), plus scheduled job-alert emails.
-Plan: [docs/PLAN.md](docs/PLAN.md) · Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
-Deployment: [docs/DEPLOY.md](docs/DEPLOY.md)
+**Track B (Advanced)** · Status: **Week 7**: 13 agent intents over 6 external APIs, voice mock interviews,
+negotiation, career roadmaps, calendar, analytics dashboard, 4 deployable services, field-level encryption.
+
+| Docs | |
+|---|---|
+| [User guide](docs/USER_GUIDE.md) | how to use every feature |
+| [API reference](docs/API.md) | auth, errors, every endpoint per service (+ OpenAPI at `/docs`) |
+| [Architecture](docs/ARCHITECTURE.md) | agent, sources, services, security, calendar |
+| [Security & privacy assessment](docs/SECURITY_PRIVACY.md) | data inventory, threat model, known gaps |
+| [Benchmarks](docs/BENCHMARKS.md) | accuracy (router, skills) and speed |
+| [Deployment](docs/DEPLOY.md) · [Plan](docs/PLAN.md) · [Blog draft](docs/BLOG.md) | |
 
 | | |
 |---|---|
@@ -16,6 +23,28 @@ Deployment: [docs/DEPLOY.md](docs/DEPLOY.md)
 | Demo video | _add link_ |
 
 ## What works
+**Week 7**
+- Dashboard: application funnel with conversion rates, 8-week activity, practice-score trend, upcoming events;
+  admin view with latency p50/p95, cache hit rate, per-source failure rate, intent mix
+- 4 services from one codebase (`SERVICE=auth|jobs|resume|interview`, or `all`) behind the Next.js `/api` gateway
+- Field-level encryption (chat, resume text, notes, interview answers) with key rotation; security headers;
+  `/metrics` token; per-account login limit; retention purge; "download my data" export
+- Docs: API reference, user guide, security/privacy assessment, benchmarks, blog draft; CI accuracy gate
+
+**Week 6**
+- Voice mock interviews (browser speech-to-text, en-IN): pace, fillers, pauses; follow-up questions when an answer
+  misses something; session report
+- Calendar: interviews/follow-ups/deadlines linked to tracked jobs, Google Calendar links, `.ics` with reminders,
+  private subscribable feed, email reminders
+- Accuracy evaluation: router 64/64 (first run 61/64), skill extraction F1 0.994 (first run 0.975)
+
+**Week 5**
+- 6 external APIs: Adzuna, JSearch, Jooble (fallback tier), Wikipedia, GitHub, Gemini; stale-cache tier when all
+  job sources are down
+- Salary bands by experience; negotiation advisor (offer percentile → counter-offer, email script, CTC checklist)
+- Career roadmap for 12 role families from live skill demand vs your resume, in 6-week phases with free resources
+- GitHub profile analysis: what your repos prove vs what your resume claims
+
 **Week 4**
 - Resume tool: upload PDF/DOCX (2 MB, validated by content, zip-bomb guard). The file isn't stored; only the
   text with email/phone removed and the parsed fields. Detects ~150 skills (tech, data, core engineering,
@@ -85,6 +114,9 @@ set `DATABASE_URL=sqlite:///./dev.db` and `REDIS_URL=` (empty → in-memory cach
 ## Tests
 ```bash
 cd backend && pytest -q && ruff check .
+python -m scripts.eval_accuracy --check     # router + skills accuracy (CI gate)
+python -m scripts.bench_offline             # speed of the deterministic code
+python -m scripts.benchmark --base http://localhost:8000   # end-to-end latency against a running server
 ```
 
 ## Environment variables
@@ -98,6 +130,10 @@ Render/Vercel settings and GitHub Secrets.
 | `RAPIDAPI_KEY` | https://rapidapi.com → JSearch |
 | `SMTP_*`, `EMAIL_FROM` | any SMTP provider, e.g. Brevo (free 300/day) or a Gmail App Password |
 | `CRON_TOKEN` | any long random string; same value in Render and the GitHub secret |
+| `JOOBLE_API_KEY` | https://jooble.org/api/about |
+| `GITHUB_TOKEN` | optional; GitHub → Settings → Developer settings → fine-grained token, no permissions |
+| `FIELD_ENCRYPTION_KEYS` | **required in production**: `python -c "import secrets;print(secrets.token_urlsafe(32))"`; keep an offline copy |
+| `METRICS_TOKEN` | any random string |
 
 ## API
 | Method | Path | |
@@ -119,7 +155,14 @@ Render/Vercel settings and GitHub Secrets.
 | PATCH / DELETE | `/applications/{id}` | status / notes / next action, remove |
 | POST / GET | `/interview/sessions`, `/interview/sessions/{id}` | practice sets |
 | POST | `/interview/sessions/{id}/questions/{qid}/answer` | feedback on one answer |
-| POST | `/internal/alerts/dispatch` | scheduler only (`X-Cron-Token`) |
+| GET | `/interview/sessions/{id}/report` | session summary |
+| GET | `/salary/benchmark`, POST `/salary/negotiate` | bands by experience; offer → counter-offer |
+| GET | `/career/path`, PUT `/career/progress` | roadmap; mark a skill learning/done |
+| POST | `/github/analyse` | GitHub profile report |
+| GET / POST / PATCH / DELETE | `/calendar/events…`, `/calendar/feed` | events, `.ics`, private feed |
+| GET | `/analytics/me`, `/analytics/system` (admin) | dashboards |
+| GET | `/me/export` | all your data as JSON |
+| POST | `/internal/alerts/dispatch` | scheduler only (`X-Cron-Token`): alerts, reminders, retention |
 | GET | `/health`, `/metrics`, `/stats/search` (admin) | monitoring |
 
 ## Team
@@ -131,7 +174,8 @@ Render/Vercel settings and GitHub Secrets.
 | _Name 4_ | FastAPI backend, database, CI/CD, monitoring |
 
 ## Data & ethics
-Official APIs only (no scraping). Passwords are bcrypt-hashed; deleting an account deletes its profile,
+Official APIs only (no scraping). Personal free text is encrypted at rest; see the
+[security assessment](docs/SECURITY_PRIVACY.md). Passwords are bcrypt-hashed; deleting an account deletes its profile,
 conversations, alerts, resume, tracker and interview sessions. Resume files are never stored, and emails/phone
 numbers are removed from the stored text. Resume suggestions say "if you genuinely have it": the tool never
 tells users to claim skills they lack. Users can delete single conversations. Search logs are visible only to admins.

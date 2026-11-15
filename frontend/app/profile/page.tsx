@@ -9,7 +9,7 @@ const num = (s: string) => (s === "" ? null : Number(s));
 function ProfileForm() {
   const [form, setForm] = useState({ full_name: "", current_city: "", preferred_cities: "", experience_years: "",
     skills: "", expected_lpa: "", notice_period_days: "", work_mode: "any", career_goal: "", target_roles: "",
-    open_to_relocation: "" });
+    open_to_relocation: "", github_username: "" });
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -20,6 +20,7 @@ function ProfileForm() {
       notice_period_days: p.notice_period_days?.toString() ?? "", work_mode: p.work_mode ?? "any",
       career_goal: p.career_goal ?? "", target_roles: p.target_roles.join(", "),
       open_to_relocation: p.open_to_relocation == null ? "" : p.open_to_relocation ? "yes" : "no",
+      github_username: p.github_username ?? "",
     })).catch((e) => setStatus({ ok: false, text: e instanceof ApiError ? e.message : "Couldn't load profile" }));
   }, []);
 
@@ -38,6 +39,7 @@ function ProfileForm() {
           notice_period_days: num(form.notice_period_days), work_mode: form.work_mode,
           career_goal: form.career_goal.trim() || null, target_roles: list(form.target_roles),
           open_to_relocation: form.open_to_relocation === "" ? null : form.open_to_relocation === "yes",
+          github_username: form.github_username.trim().replace(/^@/, "") || null,
         }),
       });
       setStatus({ ok: true, text: "Saved. The agent uses these as defaults; \"show me jobs\" searches your main target role." });
@@ -70,6 +72,9 @@ function ProfileForm() {
         <select value={form.open_to_relocation} onChange={set("open_to_relocation")} className={input}>
           <option value="">Not specified</option><option value="yes">Yes</option><option value="no">No</option>
         </select>
+      </label>
+      <label className="text-sm">GitHub username (optional)
+        <input value={form.github_username} onChange={set("github_username")} placeholder="asha-dev" pattern="@?[A-Za-z0-9-]*" className={input} />
       </label>
       <label className="text-sm sm:col-span-2">Skills (comma-separated)
         <input value={form.skills} onChange={set("skills")} placeholder="python, sql, react" className={input} />

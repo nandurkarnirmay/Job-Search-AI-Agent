@@ -24,7 +24,7 @@ _FILLER = re.compile(
     r"average|typical|median|range|earn|earns|earning|paid|pay|how|much|what|does|do|compensation|tell|"
     r"about|only|just|instead|also|now|then|same|but|those|these|it|there|ok|okay|thanks|like|next|page|"
     r"results?|load|salaries|are|was|were|be|should|could|would|expect|offered|offer|india|filters?|anywhere|"
-    r"everywhere)\b",
+    r"everywhere|ones?|fine|okay|works|too)\b",
     re.I,
 )
 
