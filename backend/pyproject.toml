@@ -1,8 +1,9 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--import-mode=importlib"
 
-[tool.ruff]
+[tool.ruff]git log --format="%h  %an  %ad  %s" --date=short -- backend/tests/test_scraper.py scraper.py streamlit_app.py chatbot.py app
 line-length = 120
 target-version = "py311"
 
