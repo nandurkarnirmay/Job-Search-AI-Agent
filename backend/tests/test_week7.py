@@ -75,11 +75,11 @@ def test_service_split_mounts_only_its_routers(monkeypatch):
     import app.main as main
     try:
         monkeypatch.setattr(get_settings(), "service", "resume")
-        paths = {r.path for r in importlib.reload(main).app.routes}
+        paths = set(importlib.reload(main).app.openapi()["paths"])
         assert "/resume" in paths and "/health" in paths
         assert "/chat" not in paths and "/auth/login" not in paths and "/interview/sessions" not in paths
         monkeypatch.setattr(get_settings(), "service", "auth")
-        paths = {r.path for r in importlib.reload(main).app.routes}
+        paths = set(importlib.reload(main).app.openapi()["paths"])
         assert "/auth/login" in paths and "/me/export" in paths and "/resume" not in paths
     finally:
         monkeypatch.setattr(get_settings(), "service", "all")
