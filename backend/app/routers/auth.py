@@ -34,6 +34,8 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"login:{_client_ip(request)}")  # slows down password guessing
+    # X-Forwarded-For can be spoofed, so also cap attempts per account regardless of IP (10/min)
+    check_rate_limit(f"login-email:{body.email.lower()}", limit=10)
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     if not user or not verify_password(body.password, user.password_hash):
         raise AuthError("Wrong email or password.", code="invalid_credentials")

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require_admin
-from app.models import SearchLog, User
+from app.models import ChatMessage, SearchLog, User
 
 router = APIRouter(prefix="/stats", tags=["monitoring"])
 
@@ -27,10 +27,14 @@ def search_stats(days: int = Query(default=7, ge=1, le=90), _: User = Depends(re
     by_channel = dict(db.execute(select(base.c.channel, func.count()).group_by(base.c.channel)).all())
     top = db.execute(select(base.c.query, func.count().label("n")).group_by(base.c.query)
                      .order_by(func.count().desc()).limit(10)).all()
+    intents = dict(db.execute(select(ChatMessage.intent, func.count())
+                              .where(ChatMessage.role == "assistant", ChatMessage.created_at >= since)
+                              .group_by(ChatMessage.intent)).all())
     total = total or 0
     return {
         "days": days, "searches": total, "active_users": users or 0, "by_channel": by_channel,
         "avg_latency_ms": round(avg_ms or 0), "zero_result_rate": round((zero or 0) / total, 3) if total else 0,
         "cache_hit_rate": round((hits or 0) / total, 3) if total else 0,
         "top_queries": [{"query": q, "count": n} for q, n in top],
+        "chat_intents": intents,
     }

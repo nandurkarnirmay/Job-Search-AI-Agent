@@ -14,6 +14,13 @@ from app.services.filters import apply_filters
 from app.sources.aggregator import Aggregator, get_aggregator
 
 log = logging.getLogger("app.search")
+JOB_TTL_SECONDS = 86400
+
+
+def get_job(job_id: str) -> JobListing | None:
+    """A job seen in a search within the last day, with its full description; None if expired/unknown."""
+    cached = get_cache().get(f"job:{job_id}")
+    return JobListing(**json.loads(cached)) if cached else None
 
 
 def run_search(params: SearchParams, aggregator: Aggregator | None = None) -> SearchOutcome:
@@ -25,6 +32,7 @@ def run_search(params: SearchParams, aggregator: Aggregator | None = None) -> Se
     raw_key = SearchParams(keywords=params.keywords.lower(), city=params.city, page=params.page,
                            work_mode="remote" if params.work_mode == "remote" else None).cache_key()
 
+    stale = False
     cached = cache.get(raw_key)
     if cached:
         data = json.loads(cached)
@@ -34,14 +42,25 @@ def run_search(params: SearchParams, aggregator: Aggregator | None = None) -> Se
         jobs, ok, failed = aggregator.search(params)
         hit = False
         if not ok:
-            reason = "no job source is configured" if not failed else "all job sources failed"
-            raise AllSourcesFailedError(f"Job search is temporarily unavailable ({reason}). Try again in a minute.")
-        cache.set(raw_key, json.dumps({"jobs": [j.model_dump() for j in jobs], "ok": ok}),
-                  get_settings().search_cache_ttl_seconds)
+            # tier 3: every source is down -> last good results for this query (up to a day old), clearly flagged
+            if failed and (old := cache.get("stale:" + raw_key)):
+                data = json.loads(old)
+                jobs, ok, stale = [JobListing(**j) for j in data["jobs"]], [], True
+                SEARCHES.labels("stale", "hit").inc()
+            else:
+                reason = "no job source is configured" if not failed else "all job sources failed"
+                raise AllSourcesFailedError(
+                    f"Job search is temporarily unavailable ({reason}). Try again in a minute.")
+        if not stale:
+            payload = json.dumps({"jobs": [j.model_dump() for j in jobs], "ok": ok})
+            cache.set(raw_key, payload, get_settings().search_cache_ttl_seconds)
+            cache.set("stale:" + raw_key, payload, get_settings().stale_cache_ttl_seconds)
+        # remember each job by id for a day: resume matching / tracking / interview prep look it up later
+        cache.set_many({f"job:{j.id}": j.model_dump_json() for j in jobs}, JOB_TTL_SECONDS)
 
     filtered = apply_filters(jobs, params)
     return SearchOutcome(params=params, jobs=filtered, total_before_filters=len(jobs), sources_ok=ok,
-                         sources_failed=failed, cache_hit=hit,
+                         sources_failed=failed, cache_hit=hit, stale=stale,
                          latency_ms=round((time.perf_counter() - start) * 1000))
 
 

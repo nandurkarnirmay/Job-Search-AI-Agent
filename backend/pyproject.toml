@@ -1,11 +1,18 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--import-mode=importlib"
 
-[tool.ruff]
+[tool.ruff]git log --format="%h  %an  %ad  %s" --date=short -- backend/tests/test_scraper.py scraper.py streamlit_app.py chatbot.py app
 line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["B008"]  # FastAPI Depends() in defaults is intended
+
+[tool.ruff.lint.per-file-ignores]
+# data tables (skills taxonomy, interview question bank): one entry per line reads better than wrapped strings
+"app/services/skills.py" = ["E501"]
+"app/services/interview_bank.py" = ["E501"]
+"app/services/career_data.py" = ["E501"]

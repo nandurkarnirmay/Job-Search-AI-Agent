@@ -32,4 +32,5 @@ def search_jobs(
     record(db, outcome, user_id=user.id, channel="search", query=q)
     return SearchOut(params=outcome.params, jobs=outcome.jobs, count=len(outcome.jobs),
                      sources_ok=outcome.sources_ok, sources_failed=outcome.sources_failed,
-                     cache_hit=outcome.cache_hit, latency_ms=outcome.latency_ms)
+                     cache_hit=outcome.cache_hit, stale=outcome.stale,
+                     latency_ms=outcome.latency_ms)

@@ -40,6 +40,14 @@ class MemoryCache:
             self._data[key] = (expires, str(new))
             return new
 
+    def set_many(self, items: dict[str, str], ttl: int) -> None:
+        for k, v in items.items():
+            self.set(k, v, ttl)
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._data.pop(key, None)
+
     def ping(self) -> bool:
         return True
 
@@ -76,6 +84,24 @@ class RedisCache:
         except Exception as e:
             log.warning("redis incr failed, using memory: %s", e)
             return self._fallback.incr(key, ttl)
+
+    def set_many(self, items: dict[str, str], ttl: int) -> None:
+        """One round trip for many keys (Upstash is remote: 70 separate SETs would add seconds)."""
+        try:
+            pipe = self._r.pipeline(transaction=False)
+            for k, v in items.items():
+                pipe.set(k, v, ex=ttl)
+            pipe.execute()
+        except Exception as e:
+            log.warning("redis set_many failed, using memory: %s", e)
+            self._fallback.set_many(items, ttl)
+
+    def delete(self, key: str) -> None:
+        try:
+            self._r.delete(key)
+        except Exception as e:
+            log.warning("redis delete failed: %s", e)
+        self._fallback.delete(key)
 
     def ping(self) -> bool:
         try:

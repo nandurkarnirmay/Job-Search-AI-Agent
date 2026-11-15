@@ -1,0 +1,22 @@
+# Free-tier scheduler for job alerts: calls the backend every 3 hours. Render's free plan has no background
+# workers, so this replaces Celery beat in production. The backend decides which alerts are actually due.
+name: Job alerts dispatch
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"   # minute 17 to avoid GitHub's top-of-hour congestion
+  workflow_dispatch: {}       # "Run workflow" button for demos
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger dispatch (retries cover Render's ~1 min cold start)
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$CRON_TOKEN" ]; then echo "API_URL/CRON_TOKEN secrets not set; skipping"; exit 0; fi
+          curl -fsS --retry 4 --retry-delay 20 --retry-all-errors --max-time 120 \
+            -X POST -H "X-Cron-Token: $CRON_TOKEN" "$API_URL/internal/alerts/dispatch"

@@ -80,3 +80,38 @@ def dedupe_key(title: str, company: str, location: str) -> str:
 
     city = canonical_city(location.split(",")[0]) if location else ""
     return hashlib.sha1(f"{norm(title)}|{norm(company)}|{norm(city)}".encode()).hexdigest()[:16]
+
+
+_INR_AMOUNT = r"(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)\s*(k|lakh|lakhs|lac|lacs|l)?"
+_INR_RANGE = re.compile(_INR_AMOUNT + r"\s*(?:-|to|–)\s*(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)\s*"
+                        r"(k|lakh|lakhs|lac|lacs|l)?", re.I)
+_INR_SINGLE = re.compile(_INR_AMOUNT, re.I)
+_PER_MONTH = re.compile(r"per month|a month|/\s*month|monthly|p\.?m\.?\b|/mo\b", re.I)
+
+
+def _inr_value(num: str, unit: str | None) -> float:
+    v = float(num.replace(",", ""))
+    unit = (unit or "").lower()
+    if unit == "k":
+        return v * 1_000
+    if unit in {"lakh", "lakhs", "lac", "lacs", "l"}:
+        return v * LAKH
+    return v
+
+
+def salary_lpa_from_inr_text(text: str) -> tuple[float | None, float | None]:
+    """'₹25,000 - ₹35,000 a month' -> (3.0, 4.2); '₹6L–₹9L' -> (6.0, 9.0). Monthly figures are annualised."""
+    if not text:
+        return (None, None)
+    m = _INR_RANGE.search(text)
+    if m:
+        lo, hi = _inr_value(m.group(1), m.group(2)), _inr_value(m.group(3), m.group(4) or m.group(2))
+    elif m := _INR_SINGLE.search(text):
+        lo = hi = _inr_value(m.group(1), m.group(2))
+    else:
+        return salary_lpa_from_text(text)
+    period = "month" if _PER_MONTH.search(text) else "year"
+    lo_l, hi_l = rupees_to_lpa(lo, period), rupees_to_lpa(hi, period)
+    if lo_l is None or hi_l is None or hi_l > 500:  # nonsense (e.g. a phone number caught by the regex)
+        return (None, None)
+    return (min(lo_l, hi_l), max(lo_l, hi_l))
